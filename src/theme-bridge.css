@@ -1,0 +1,730 @@
+/*
+ * Kyndryl Bridge-inspired theme layer.
+ *
+ * Loaded after styles.css. It only overrides colour, typography and surface
+ * styling; layout and responsive behaviour stay in styles.css.
+ *
+ * Accent usage: teal is the interactive/brand accent (buttons, active nav,
+ * tabs, focus). Red is kept for the wordmark and for critical / error states.
+ */
+
+:root {
+    font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    color: #3d3c3c;
+    background: #f8f8f8;
+
+    --kyndryl-red: #ff462d;
+    --accent: #29707a;
+    --accent-hover: #1f5c64;
+    --accent-tint: #e6f0f1;
+    --accent-line: #c9dfe2;
+    --hero-from: #0a353a;
+    --hero-mid: #155a4f;
+    --hero-to: #186553;
+
+    --text: #3d3c3c;
+    --muted: #727272;
+    --line: #e3e3e3;
+    --light: #f4f4f4;
+    --page: #f8f8f8;
+}
+
+body {
+    background: var(--page);
+    color: var(--text);
+}
+
+/* ---------- Typography ---------- */
+
+h1 {
+    font-weight: 300;
+}
+
+h2 {
+    font-weight: 500;
+}
+
+h3 {
+    font-weight: 500;
+}
+
+/* ---------- Focus and form accents ---------- */
+
+:focus-visible {
+    outline-color: var(--accent);
+}
+
+input[type='checkbox'],
+input[type='range'] {
+    accent-color: var(--accent);
+}
+
+.search-input:focus-within {
+    outline-color: var(--accent);
+}
+
+input:not([type='checkbox']):not([type='range']):not([type='file']),
+textarea {
+    border-color: #c6c6c6;
+    border-radius: 4px;
+}
+
+/* ---------- Search fields ----------
+ * The generic input rule above (and the one in styles.css) is more specific
+ * than `.search-input input`, which drew a second border inside the field.
+ * These selectors are deliberately more specific so the inner input stays flat.
+ */
+
+.search-input {
+    border-color: #c6c6c6;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #6f6f6f;
+}
+
+.search-input:hover {
+    border-color: #a8a8a8;
+}
+
+.search-input:focus-within {
+    border-color: var(--accent);
+    outline: 2px solid rgba(41, 112, 122, 0.25);
+    outline-offset: 0;
+}
+
+.search-input input:not([type='checkbox']):not([type='range']):not([type='file']),
+.graph-search input:not([type='checkbox']):not([type='range']):not([type='file']) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 8px 0;
+    height: 100%;
+    font-size: 13px;
+    min-width: 0;
+    outline: none;
+    box-shadow: none;
+}
+
+.graph-search input:not([type='checkbox']):not([type='range']):not([type='file']) {
+    padding: 4px 0;
+    font-size: 12px;
+}
+
+.search-input input::placeholder,
+.graph-search input::placeholder {
+    color: #8c8c8c;
+}
+
+/* ---------- Buttons ---------- */
+
+.button {
+    border-color: #c6c6c6;
+    border-radius: 4px;
+    font-weight: 500;
+    color: var(--text);
+}
+
+.button:hover:not(:disabled) {
+    background: #f2f2f2;
+}
+
+.button-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.button-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    box-shadow: none;
+}
+
+.button-danger {
+    border-color: var(--kyndryl-red);
+    background: #fff3f1;
+}
+
+/* ---------- Global header (white, like Bridge) ---------- */
+
+.global-header {
+    background: #ffffff;
+    color: var(--text);
+    border-bottom: 1px solid #e6e6e6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.brand-area,
+.nav-collapsed .brand-area {
+    width: auto;
+    min-width: calc(var(--sidebar-width) - 22px);
+}
+
+/* Bridge always shows the hamburger menu next to the wordmark */
+.nav-toggle {
+    display: inline-flex;
+}
+
+.brand {
+    color: var(--text);
+    gap: 14px;
+}
+
+.header-icon {
+    color: #3d3c3c;
+}
+
+.header-icon:hover:not(:disabled) {
+    background: #f2f2f2;
+}
+
+.header-divider {
+    background: #dcdcdc;
+}
+
+.global-search {
+    background: #f4f4f4;
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+    color: #6f6f6f;
+}
+
+.global-search:hover {
+    border-color: #c6c6c6;
+}
+
+.workspace-switch,
+.header-environment {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.workspace-switch:hover,
+.header-environment:hover {
+    background: #f4f4f4;
+}
+
+.header-environment select {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text);
+}
+
+.notification-count {
+    background: var(--kyndryl-red);
+    color: white;
+    border: 1px solid white;
+}
+
+.profile-trigger > svg {
+    color: #3d3c3c;
+}
+
+.profile-trigger .avatar {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border: 1px solid var(--accent-line);
+}
+
+/* ---------- Kyndryl Bridge-style wordmark ---------- */
+
+.brand-mark {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28em;
+    font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1;
+    white-space: nowrap;
+    text-transform: lowercase;
+}
+
+.brand-kyndryl {
+    color: var(--kyndryl-red);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+}
+
+.brand-product {
+    color: #6f7f86;
+    font-weight: 400;
+    letter-spacing: 0.005em;
+}
+
+.brand .brand-mark {
+    font-size: 26px;
+}
+
+.brand-console {
+    display: inline-flex;
+    align-items: center;
+    padding-left: 16px;
+    border-left: 1px solid #dcdcdc;
+    color: #6f6f6f;
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 28px;
+    white-space: nowrap;
+}
+
+.loading-brand {
+    font-weight: 400;
+}
+
+.loading-brand .brand-mark {
+    font-size: 34px;
+}
+
+.access-panel .loading-brand .brand-mark {
+    font-size: 38px;
+}
+
+@media (max-width: 1099px) {
+    .brand-console {
+        display: none;
+    }
+}
+
+@media (max-width: 600px) {
+    .brand-area,
+    .nav-collapsed .brand-area {
+        min-width: 0;
+        gap: 8px;
+    }
+
+    .brand .brand-mark {
+        font-size: 18px;
+    }
+
+    .header-environment,
+    .header-environment select {
+        font-size: 12px;
+    }
+
+    .header-environment {
+        padding: 0 4px;
+    }
+
+    .global-header {
+        gap: 8px;
+        padding: 0 12px;
+    }
+
+    .header-controls {
+        gap: 8px;
+    }
+}
+
+/* ---------- Sidebar ---------- */
+
+.sidebar {
+    background: #ffffff;
+    border-right: 1px solid #e3e3e3;
+}
+
+.workspace-monogram {
+    background: var(--accent-tint);
+    border-color: var(--accent-line);
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.sidebar-workspace strong {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.sidebar-workspace span {
+    font-size: 11px;
+}
+
+.nav-group-label {
+    color: #3d3c3c;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.nav-item {
+    font-size: 14px;
+    font-weight: 400;
+    color: #3d3c3c;
+    border-radius: 0;
+}
+
+.nav-item > svg {
+    color: #3d3c3c;
+}
+
+.nav-item:hover {
+    background: #f4f4f4;
+}
+
+.nav-item.active {
+    background: transparent;
+    color: var(--accent);
+    font-weight: 500;
+}
+
+.nav-item.active::before {
+    background: var(--accent);
+    border-radius: 0;
+}
+
+.nav-item.active > svg {
+    color: var(--accent);
+}
+
+.nav-counter {
+    background: #f0f0f0;
+    font-size: 10px;
+}
+
+.nav-counter.accent {
+    background: var(--accent-tint);
+    color: var(--accent);
+}
+
+.demo-source-icon {
+    background: var(--accent-tint);
+    color: var(--accent);
+}
+
+.sidebar-footer strong {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.sidebar-footer span:not(.source-dot) {
+    font-size: 11px;
+}
+
+/* ---------- Breadcrumbs and footer ---------- */
+
+.breadcrumb-bar {
+    background: #ffffff;
+    border-bottom: 1px solid #e6e6e6;
+    font-size: 12px;
+}
+
+.breadcrumbs strong {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.snapshot-indicator {
+    font-size: 11px;
+}
+
+.workspace-footer {
+    background: #ffffff;
+    font-size: 11px;
+}
+
+/* ---------- Page header becomes the Bridge hero banner ---------- */
+
+.workspace-main {
+    --main-pad-top: 26px;
+    --main-pad-x: 30px;
+    --main-pad-bottom: 32px;
+    padding: var(--main-pad-top) var(--main-pad-x) var(--main-pad-bottom);
+}
+
+.workspace-main.war-room-main {
+    --main-pad-top: 22px;
+    --main-pad-x: 24px;
+    --main-pad-bottom: 30px;
+}
+
+@media (min-width: 1650px) {
+    .workspace-main {
+        --main-pad-top: 30px;
+        --main-pad-x: 40px;
+        --main-pad-bottom: 30px;
+    }
+}
+
+@media (max-width: 1280px) {
+    .workspace-main {
+        --main-pad-top: 24px;
+        --main-pad-x: 24px;
+        --main-pad-bottom: 24px;
+    }
+}
+
+@media (max-width: 600px) {
+    .workspace-main {
+        --main-pad-top: 21px;
+        --main-pad-x: 16px;
+        --main-pad-bottom: 21px;
+    }
+
+    .workspace-main.war-room-main {
+        --main-pad-top: 20px;
+        --main-pad-x: 14px;
+        --main-pad-bottom: 20px;
+    }
+}
+
+/* Full-bleed banner: cancels the main area's padding so it spans edge to edge */
+.page-header {
+    position: relative;
+    overflow: hidden;
+    margin: calc(-1 * var(--main-pad-top, 26px)) calc(-1 * var(--main-pad-x, 30px)) 26px;
+    padding: 30px var(--main-pad-x, 30px);
+    min-height: 136px;
+    color: #ffffff;
+    background: linear-gradient(100deg, var(--hero-from) 0%, var(--hero-mid) 55%, var(--hero-to) 100%);
+}
+
+/* Dotted wave texture on the right side of the banner */
+.page-header::after {
+    content: '';
+    position: absolute;
+    top: -20%;
+    right: -4%;
+    width: 46%;
+    height: 140%;
+    pointer-events: none;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.4px, transparent 1.8px);
+    background-size: 13px 13px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 70% 45%, #000 0%, transparent 72%);
+    mask-image: radial-gradient(ellipse 70% 60% at 70% 45%, #000 0%, transparent 72%);
+}
+
+.page-header > * {
+    position: relative;
+    z-index: 1;
+}
+
+.page-header h1 {
+    color: #ffffff;
+    font-size: 34px;
+    font-weight: 300;
+    line-height: 1.2;
+}
+
+.page-header .eyebrow {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    margin-bottom: 8px;
+}
+
+.page-header p {
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 13px;
+}
+
+.page-header .button {
+    border-color: rgba(255, 255, 255, 0.85);
+    background: #ffffff;
+    color: var(--text);
+}
+
+.page-header .button-primary {
+    background: #377179;
+    border-color: #377179;
+    color: #ffffff;
+}
+
+.page-header .button-primary:hover:not(:disabled) {
+    background: #2d636a;
+    border-color: #2d636a;
+}
+
+.page-header .icon-button {
+    background: #ffffff;
+    border-color: #ffffff;
+    color: var(--text);
+}
+
+.page-header .badge {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #ffffff;
+}
+
+.page-header .select-wrap select,
+.page-header select {
+    background-color: #ffffff;
+    color: var(--text);
+}
+
+@media (max-width: 600px) {
+    .page-header {
+        min-height: 0;
+        padding-top: 22px;
+        padding-bottom: 22px;
+    }
+
+    .page-header h1 {
+        font-size: 26px;
+    }
+
+    .page-header .button-primary {
+        font-size: 14px;
+    }
+}
+
+/* ---------- Content surfaces ---------- */
+
+.workspace-section,
+.overview-bottom-grid .workspace-section,
+.war-lower-grid .workspace-section {
+    background: #ffffff;
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+    padding: 20px 22px;
+}
+
+@media (max-width: 600px) {
+    .workspace-section,
+    .overview-bottom-grid .workspace-section,
+    .war-lower-grid .workspace-section {
+        padding: 16px 14px;
+    }
+}
+
+.metric {
+    border-color: #e3e3e3;
+    border-radius: 4px;
+}
+
+button.metric:hover {
+    border-color: var(--accent-line);
+    background: #fbfdfd;
+}
+
+.metric-label {
+    color: #3d3c3c;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.metric-main > strong {
+    font-weight: 300;
+    color: #3d3c3c;
+}
+
+.metric-critical,
+.metric-main > strong.metric-critical {
+    color: var(--kyndryl-red);
+}
+
+.metric-detail {
+    color: #8c8c8c;
+    font-size: 12px;
+}
+
+.spark-bars i:last-child {
+    background: var(--accent);
+}
+
+.section-header h2 {
+    font-weight: 500;
+}
+
+.eyebrow {
+    font-weight: 500;
+}
+
+.text-link,
+.icon-link {
+    color: var(--accent);
+    font-weight: 500;
+}
+
+/* ---------- Tabs (Bridge-style: grey tabs, teal active underline) ---------- */
+
+.tabs {
+    gap: 2px;
+    border-bottom: 1px solid #d9d9d9;
+}
+
+.tabs > button {
+    padding: 12px 22px 13px;
+    font-size: 14px;
+    font-weight: 400;
+    color: #3d3c3c;
+    background: #f4f4f4;
+}
+
+.tabs > button:hover {
+    background: #ececec;
+}
+
+.tabs > button.active {
+    color: var(--accent);
+    font-weight: 500;
+    background: #f4f4f4;
+}
+
+.tabs > button.active::after {
+    background: var(--accent);
+    height: 3px;
+}
+
+/* ---------- Accent swaps (non-critical uses of the old red) ---------- */
+
+.progress-track > span {
+    background: var(--accent);
+}
+
+.agent-status-dot.running {
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(41, 112, 122, 0.15);
+}
+
+.menu-check {
+    color: var(--accent);
+}
+
+.loading-workspace > svg {
+    color: var(--accent);
+}
+
+.access-screen {
+    background:
+        radial-gradient(circle, rgba(255, 255, 255, 0.12) 1.3px, transparent 1.6px) 0 0 / 16px 16px,
+        linear-gradient(100deg, var(--hero-from) 0%, var(--hero-mid) 55%, var(--hero-to) 100%);
+}
+
+.access-panel {
+    border: 1px solid #e3e3e3;
+    border-top: 4px solid var(--accent);
+    border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.access-panel h1 {
+    font-weight: 300;
+}
+
+.workflow-steps > li.current > span {
+    border-color: var(--accent);
+}
+
+.evidence-links > button:hover {
+    border-color: var(--accent);
+}
+
+.knowledge-list > button.selected {
+    border-color: var(--accent-line);
+}
+
+.pipeline-sidebar li button.selected > span {
+    border-color: var(--accent);
+}
+
+/* ---------- Dropdowns and dialogs ---------- */
+
+.dropdown {
+    border-radius: 4px;
+}

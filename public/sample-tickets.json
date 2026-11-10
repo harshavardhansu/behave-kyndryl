@@ -1,0 +1,12 @@
+[
+    {
+        "title": "Example imported checkout incident",
+        "description": "A manually supplied example ticket describing a checkout error that requires investigation.",
+        "severity": "Medium",
+        "environment": "Staging",
+        "service": "checkout-svc",
+        "impact": "Staging checkout validation is blocked.",
+        "source": "Ticket import",
+        "detectedAt": "2026-10-30T09:00:00Z"
+    }
+]

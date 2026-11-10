@@ -1,0 +1,77 @@
+name: ${PAYMENT_COMPOSE_PROJECT:-behave-payment-sandbox}
+
+services:
+  payment-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${PAYMENT_DB_NAME:-payments}
+      POSTGRES_USER: ${PAYMENT_DB_USER:-payments}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment-dev-only}
+    ports:
+      - "${PAYMENT_API_BIND_ADDRESS:-127.0.0.1}:${PAYMENT_DB_PORT:-15432}:5432"
+    volumes:
+      - payment-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+    restart: unless-stopped
+
+  payment-api:
+    image: ${PAYMENT_API_IMAGE:-behave-payment-api:3.8.1}
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        PAYMENT_API_VERSION: ${PAYMENT_API_VERSION:-3.8.1}
+    environment:
+      PAYMENT_DATABASE_URL: postgresql+psycopg://${PAYMENT_DB_USER:-payments}:${PAYMENT_DB_PASSWORD:-payment-dev-only}@payment-db:5432/${PAYMENT_DB_NAME:-payments}
+      PAYMENT_API_VERSION: ${PAYMENT_API_VERSION:-3.8.1}
+      PAYMENT_DB_POOL_SIZE: ${PAYMENT_DB_POOL_SIZE:-5}
+      PAYMENT_DB_MAX_OVERFLOW: ${PAYMENT_DB_MAX_OVERFLOW:-0}
+      PAYMENT_DB_POOL_TIMEOUT: ${PAYMENT_DB_POOL_TIMEOUT:-2}
+      PAYMENT_DB_HOLD_SECONDS: ${PAYMENT_DB_HOLD_SECONDS:-0.3}
+    depends_on:
+      payment-db:
+        condition: service_healthy
+    ports:
+      - "${PAYMENT_API_BIND_ADDRESS:-127.0.0.1}:${PAYMENT_API_PORT:-18080}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  payment-api-previous:
+    profiles: [release-build]
+    image: behave-payment-api:previous
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        PAYMENT_API_VERSION: previous
+    environment:
+      PAYMENT_DATABASE_URL: postgresql+psycopg://${PAYMENT_DB_USER:-payments}:${PAYMENT_DB_PASSWORD:-payment-dev-only}@payment-db:5432/${PAYMENT_DB_NAME:-payments}
+      PAYMENT_API_VERSION: previous
+      PAYMENT_DB_POOL_SIZE: 20
+      PAYMENT_DB_MAX_OVERFLOW: 0
+      PAYMENT_DB_POOL_TIMEOUT: 2
+      PAYMENT_DB_HOLD_SECONDS: ${PAYMENT_DB_HOLD_SECONDS:-0.3}
+    depends_on:
+      payment-db:
+        condition: service_healthy
+    ports:
+      - "${PAYMENT_API_BIND_ADDRESS:-127.0.0.1}:${PAYMENT_PREVIOUS_API_PORT:-18081}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  payment-postgres-data:
