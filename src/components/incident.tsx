@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Bot,
@@ -29,7 +29,9 @@ import type {
   Hypothesis,
   Incident,
 } from '../types'
-import { dateTime, time } from '../lib/format'
+import { dateTime, errorMessage, time } from '../lib/format'
+import { post } from '../lib/api'
+import { isOpenMission, latestMission } from '../lib/missions'
 import {
   Badge,
   Button,
@@ -156,6 +158,13 @@ export function nextAction(incident: Incident): {
   )
 }
 
+const MISSION_STAGES: Incident['status'][] = ['New', 'Triaged', 'Investigating', 'Reopened']
+
+/**
+ * The incident's primary next step. Agent missions are the main engine:
+ * early-stage incidents start a mission; an open mission is continued in the
+ * AI War Room; later stages fall back to the classic governed actions.
+ */
 export function NextActionButton({
   incident,
   secondary = false,
@@ -163,7 +172,52 @@ export function NextActionButton({
   incident: Incident
   secondary?: boolean
 }) {
-  const { can, setActionDialog, actionPending } = useWorkspace()
+  const { data, can, setActionDialog, actionPending, selectIncident, refresh, notify } = useWorkspace()
+  const navigate = useNavigate()
+  const [starting, setStarting] = useState(false)
+  const mission = latestMission(data.missions, incident.id)
+  const variant = secondary ? 'secondary' : 'primary'
+  function openWarRoom() {
+    selectIncident(incident.id)
+    navigate('/war-room')
+  }
+  if (mission && isOpenMission(mission)) {
+    return (
+      <Button variant={variant} onClick={openWarRoom} title={mission.pendingGate ? `Waiting for a human decision: ${mission.pendingGate.title}` : `Mission ${mission.status}`}>
+        <Bot size={17} />
+        {mission.pendingGate ? 'Decide in agent mission' : 'Open agent mission'}
+      </Button>
+    )
+  }
+  const legacyRunning = ['Running', 'Paused', 'Failed'].includes(incident.workflowStatus)
+  if (MISSION_STAGES.includes(incident.status) && !legacyRunning) {
+    const hasEvidence = data.evidence.some((record) => record.incidentId === incident.id)
+    const allowed = can('workflow:run', incident.environment)
+    return (
+      <Button
+        variant={variant}
+        busy={starting}
+        disabled={!allowed || !hasEvidence}
+        title={!allowed ? `Requires workflow:run in ${incident.environment}` : !hasEvidence ? 'Attach evidence first: the Orchestrator analyses the ticket and its evidence.' : 'Start an agent mission: the Orchestrator analyses the ticket and proposes a team for your approval.'}
+        onClick={async () => {
+          setStarting(true)
+          try {
+            await post(`/incidents/${incident.id}/missions`, {})
+            await refresh()
+            notify('Agent mission started. The Orchestrator is analysing the ticket.')
+            openWarRoom()
+          } catch (failure) {
+            notify(errorMessage(failure), true)
+          } finally {
+            setStarting(false)
+          }
+        }}
+      >
+        <Play size={17} />
+        Investigate incident
+      </Button>
+    )
+  }
   const next = nextAction(incident)
   return (
     <Button

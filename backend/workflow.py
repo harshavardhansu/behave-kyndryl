@@ -265,6 +265,8 @@ def act(state: dict, incident_id: str, command: ActionInput, user: dict, key: st
         approval = find(state, "approvals", change["approvalId"])
         if approval["status"] != "Pending":
             raise HTTPException(409, "This approval was already decided.")
+        if approval.get("missionId"):
+            raise HTTPException(409, f"This approval belongs to agent mission {approval['missionId']}. Decide it in the AI War Room so the mission continues.")
         if is_payment_sandbox(incident) and approval.get("actionPayloadHash") != payment_action_hash(change["sandboxAction"]):
             raise HTTPException(409, "The Payment API sandbox action changed after approval was requested.")
         if approval.get("requestedById") == user["id"] or approval["requestedBy"] == user["name"]:

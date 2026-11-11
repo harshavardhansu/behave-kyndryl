@@ -36,14 +36,6 @@ async function changeRole(page: Page, role: string) {
   await expect(page.locator('.toast-stack')).toContainText(`(${role})`)
 }
 
-async function confirmAction(page: Page, trigger: string, confirmation: string) {
-  await page.getByRole('button', { name: trigger, exact: true }).first().click()
-  const dialog = page.getByRole('dialog')
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: confirmation, exact: true }).click()
-  await expect(dialog).not.toBeVisible()
-}
-
 async function screenshotPixelSummary(page: Page, screenshot: Buffer) {
   return page.evaluate(async (encodedImage) => {
     const image = new Image()
@@ -212,47 +204,48 @@ test('Payment API sandbox incidents create the bounded recovery proposal', async
   expect(change.sandboxAction).toEqual({ release: '3.8.1', pool_size: 20 })
 })
 
-test('checkout workflow pauses, resumes, validates, obtains separate approval and closes', async ({ page }) => {
-  await openWorkspace(page, '/war-room')
-  await page.getByRole('combobox', { name: 'Selected incident', exact: true }).selectOption('INC-1042')
-  await confirmAction(page, 'Investigate incident', 'Start investigation')
-  await navigate(page, '/agents')
-  await confirmAction(page, 'Pause', 'Pause workflow')
-  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeEnabled()
-  await confirmAction(page, 'Resume', 'Resume workflow')
-  await expect.poll(async () => {
+test('investigating an incident runs an agent mission that drives the incident, change and approval records', async ({ page }) => {
+  const incidentStatus = async () => {
     const snapshot = await (await page.request.get('/api/v1/workspace')).json()
     return snapshot.incidents.find((incident: { id: string }) => incident.id === 'INC-1042').status
-  }).toBe('Fix Proposed')
-  await navigate(page, '/testing')
-  await confirmAction(page, 'Replay validation', 'Replay validation')
-  await expect(page.getByText('Checkout remediation validation', { exact: true })).toBeVisible()
+  }
+  await openWorkspace(page, '/war-room')
+  await page.getByRole('combobox', { name: 'Selected incident', exact: true }).selectOption('INC-1042')
+  await page.getByRole('button', { name: 'Investigate incident', exact: true }).first().click()
+  const gate = page.locator('.mission-gate')
+  await expect(gate).toContainText('Approve the team for iteration 1')
+  await expect.poll(incidentStatus).toMatch(/^(Triaged|Investigating)$/)
+  await gate.getByRole('button', { name: 'Approve team' }).click()
+  await expect(gate).toContainText('Approve the root cause', { timeout: 20_000 })
+  await gate.getByRole('button', { name: 'Approve root cause' }).click()
+  await expect(gate).toContainText('Approve the fix for release', { timeout: 20_000 })
+  await expect.poll(incidentStatus).toBe('Awaiting Approval')
+
+  await navigate(page, '/agents')
+  await expect(page.locator('.agents-left-out')).toContainText('Left out by the Orchestrator')
+  await expect(page.locator('.module-context-bar')).toContainText('Awaiting decision')
+  await expect(page.getByRole('button', { name: 'Decide in agent mission', exact: true })).toBeVisible()
+
   await navigate(page, '/changes')
-  await confirmAction(page, 'Request approval', 'Request approval')
-  await expect(page.getByRole('button', { name: 'Review approval', exact: true })).toBeDisabled()
   await changeRole(page, 'Change Approver')
-  await page.getByRole('button', { name: 'Review approval', exact: true }).click()
-  await page.getByRole('dialog').getByRole('checkbox').check()
-  await page.getByRole('dialog').getByRole('button', { name: 'Approve change', exact: true }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible()
-  await expect(page.getByRole('button', { name: 'Simulate deployment', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Decide in agent mission', exact: true }).first().click()
+  await expect(gate).toContainText('Approve the fix for release')
+  await gate.getByRole('button', { name: 'Approve fix' }).click()
+  await expect(gate).toContainText('Confirm the outcome', { timeout: 20_000 })
+  await expect.poll(incidentStatus).toBe('Monitoring')
+
   await changeRole(page, 'Incident Manager')
-  await page.getByRole('button', { name: 'Simulate deployment', exact: true }).click()
-  await expect(page.getByRole('dialog').getByRole('button', { name: 'Simulate deployment', exact: true })).toBeDisabled()
-  await page.getByRole('dialog').getByLabel(/Type Production/).fill('Production')
-  await page.getByRole('dialog').getByRole('button', { name: 'Simulate deployment', exact: true }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible()
-  await confirmAction(page, 'Verify recovery', 'Verify recovery')
-  await page.getByRole('button', { name: 'Close incident', exact: true }).click()
-  await page.getByRole('dialog').getByLabel('Verified outcome').fill('Synthetic recovery verified against the defined error and latency budgets; separate human review completed.')
+  await gate.getByRole('button', { name: 'Confirm resolved' }).click()
+  await expect(page.locator('.mission-empty')).toContainText('Last mission resolved')
+  await expect.poll(incidentStatus).toBe('Resolved')
+  await navigate(page, '/changes')
+  await page.getByRole('button', { name: 'Close incident', exact: true }).first().click()
+  await page.getByRole('dialog').getByLabel('Verified outcome').fill('Agent mission findings reviewed; separate human approval of the fix and outcome recorded.')
   await page.getByRole('dialog').getByRole('button', { name: 'Close incident', exact: true }).click()
   await expect(page.getByRole('dialog')).not.toBeVisible()
-  await expect(page.getByRole('button', { name: 'Reopen incident', exact: true })).toBeVisible()
-  await navigate(page, '/knowledge')
-  await page.getByRole('tab', { name: 'Drafts', exact: true }).click()
-  await expect(page.getByRole('button', { name: /Resolution draft: Checkout failures/ })).toBeVisible()
+  await expect.poll(incidentStatus).toBe('Closed')
   await navigate(page, '/audit')
-  await page.getByRole('textbox', { name: 'Search identity, action, resource or correlation' }).fill('close')
+  await page.getByRole('textbox', { name: 'Search identity, action, resource or correlation' }).fill('agent mission')
   await expect(page.locator('tbody')).toContainText('INC-1042')
 })
 

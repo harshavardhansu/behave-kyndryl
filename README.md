@@ -1,129 +1,135 @@
 # BEHAVE KYNDRYL
 
-The existing React/TypeScript and FastAPI application is being upgraded incrementally to the BEHAVE KYNDRYL specification, "Your Problem. Their Mission."
+**Your Problem. Their Mission.** An AI incident-response workspace where an **Orchestrator agent** analyses each ticket, forms a **team of only the specialist agents it needs**, and works the problem step by step. **A human approves every important decision.** If the first attempt doesn't resolve the issue, the next iteration builds on what was learned.
 
-**Current status:** functional single-workspace local demonstration with persisted records, 14 specialist role definitions, 17 governed actions and 14 navigation modules. Stage 0 is audited. The isolated Payment API Stage 1A implementation is present, but Docker/PostgreSQL runtime acceptance and the required three consecutive runs are **NOT RUN** in this environment. The visible product name is BEHAVE KYNDRYL. Dynamic agent execution, durable events, the 3D workforce and the later enterprise roadmap are not complete. See the [audit and phase report](docs/upgrade-audit.md).
+![AI War Room: live Payment API sandbox, agent mission and a human decision](docs/images/war-room.png)
 
-## Run Locally on Windows
+> Hackathon demonstration for Application Managed Services. The demo data is synthetic, except the Payment API sandbox, whose failures and recovery are **measured live**.
 
-Install Node.js with npm and Python. Verification on 2026-10-31 used Node 26.7.0, Python 3.14.7 and Microsoft Edge; other runtime versions were not certified in this audit.
+---
 
-Open PowerShell in the project root. For a fresh copy only:
+## What it does
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+| | |
+|---|---|
+| **Orchestrator-led agent missions** | Opens a ticket, reads the evidence and proposes a team: e.g. 3 of 13 specialists, with a reason for every agent chosen *and* left out. |
+| **Humans in the loop** | Four gates: approve or edit the team, approve the root cause, approve the fix (by a **different** person: separation of duties), confirm the outcome. Every decision goes into the audit trail. |
+| **Iterations with learnings** | Not resolved? The next iteration starts with what was learned and can add specialists. At most 3 iterations, then it escalates to a human. |
+| **Real AI, low cost** | Azure OpenAI (`gpt-4.1-mini`). About 3–6 calls per mission (fractions of a cent), a daily limit, an answer cache and a usage meter. Without an Azure key it uses a free, clearly labelled **simulated** planner. |
+| **A failure you can reproduce** | A real Payment API runs locally (no Docker). 50 concurrent requests make release v3.8.1 fail (pool size 5). The agents diagnose it, a human approves *pool 5 → 20*, the mission applies it to the running service and **re-measures: 8/50 failures → 0/50**. |
+| **One story everywhere** | The mission drives the incident status, the change and approval records, deployments and recovery. The War Room, Agent orchestration, Changes and Command centre stay in sync. |
+| **AI War Room** | An animated command view: Orchestrator hub, four lifecycle squads, live findings, a human-approval gate, an activity feed, plus a 2D list and the service dependency map. |
+
+Plus 14 modules (Command centre, Incidents, Root cause analysis, Testing, Security, Change & release, Observability, Knowledge, Reports, Audit, Administration…) with realistic demo data for 13 incidents.
+
+---
+
+## Quick start
+
+**You need:** Node.js 20+ and Python 3.12+ (tested with Node 26 and Python 3.14).
+
+```bash
+# 1. Install
 npm ci
-```
+python -m venv .venv
+.venv/bin/python -m pip install -r backend/requirements.txt      # Windows: .venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 
-Create your local configuration only if it does not already exist:
+# 2. Configure (optional AI settings live here; the app runs without them)
+cp .env.example .env                                              # Windows: Copy-Item .env.example .env
 
-```powershell
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
-```
-
-Terminal 1, backend:
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8000
-```
-
-Terminal 2, frontend:
-
-```powershell
+# 3. Run: two terminals
+.venv/bin/python -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8000
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
-Open the URL printed by Vite, normally http://127.0.0.1:5173/. API documentation is at http://127.0.0.1:8000/api/docs and database readiness at http://127.0.0.1:8000/api/v1/health. Keep both terminals running. Activation of the Python virtual environment is optional when using its executable explicitly.
+Open **http://127.0.0.1:5173**. You're signed in as a demo **Incident Manager**; switch roles from the profile menu (e.g. **Change Approver** to approve fixes). API docs are at http://127.0.0.1:8000/api/docs.
 
-## Payment API Sandbox (Stage 1A)
+**Try it in 2 minutes:** open **AI War Room** and select **INC-1043**. Click **Start sandbox**, then **Run workload**, then **Start agent mission**. Approve the team and the root cause, switch to **Change Approver** and approve the fix, and watch the recovery get measured. The full talk track is in **[DEMO_GUIDE.md](DEMO_GUIDE.md)**.
 
-The sandbox is an independent PostgreSQL-backed service. The existing BEHAVE backend and Vite frontend continue to run with the commands above so the sandbox adapter can invoke its fixed, allowlisted Podman Compose project from the host. Do not mount the Podman socket into the BEHAVE backend container.
+**Reset before a demo:** Administration → **Reset demo data** (Administrator role; your data is backed up to `data/backups/` first).
 
-Install and start Podman Desktop first. Confirm the Podman machine is running with `podman machine list`. Install the native Compose provider into the project virtual environment, then initialize the sandbox-only environment file if it does not exist:
+---
 
-```powershell
-& .\.venv\Scripts\python.exe -m pip install -r requirements-podman.txt
-if (!(Test-Path payment_api\.env.sandbox)) { Copy-Item payment_api\sandbox.env.example payment_api\.env.sandbox }
-$env:PODMAN_COMPOSE_PROVIDER = (Resolve-Path .\.venv\Scripts\podman-compose.exe).Path
-podman compose --project-name behave-payment-sandbox --env-file payment_api\.env.sandbox --file compose.yaml --profile release-build build payment-api payment-api-previous
-podman compose --project-name behave-payment-sandbox --env-file payment_api\.env.sandbox --file compose.yaml up -d payment-db payment-api
+## Optional: real AI with Azure OpenAI
+
+Add to `.env` (never commit it; `.env` is git-ignored):
+
+```
+AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/openai/v1
+AZURE_OPENAI_API_KEY=<your key>
+AZURE_AI_MODEL_DEPLOYMENT=gpt-4.1-mini
+AGENTICA_AI_ALLOWED_CLASSIFICATIONS=["Internal"]
+AGENTICA_AI_DAILY_CALL_LIMIT=40
+AGENTICA_AI_MAX_OUTPUT_TOKENS=900
 ```
 
-The API is bound to `127.0.0.1:18080`; PostgreSQL is bound to `127.0.0.1:15432`. The previous release is built separately and is only started by the acceptance runner on `127.0.0.1:18081`. The example password is for local development only and must not be reused outside this isolated sandbox.
+Restart the backend. Missions then show **AI-GENERATED**, and the mission panel shows calls and tokens used today. Microsoft Entra ID sign-in (`AZURE_AI_PROJECT_ENDPOINT`) is also supported.
 
-The sandbox uses native Podman commands only; the adapter explicitly selects the pinned `podman-compose` provider and does not fall back to Docker Compose. In this workspace Podman 5.8.1 and `podman-compose` 1.6.0 were verified, but the image build is currently blocked by `x509: certificate signed by unknown authority` from `docker.io`. Do not mark Stage 1A acceptance complete until your company-approved registry mirror or CA trust is configured and the three-cycle runner succeeds. Do not disable TLS verification or mark the registry insecure.
+**Safety rules for the AI:**
+- the AI only reads the ticket and its evidence, and cannot approve, deploy or execute anything;
+- answers must match strict formats, and are checked against the real agent roles and evidence IDs;
+- if a call fails or the limit is reached, the simulated planner takes over and says so.
 
-Run the measured three-cycle acceptance sequence from another PowerShell terminal:
+---
 
-```powershell
-& .\.venv\Scripts\python.exe -m scripts.stage1a_acceptance
+## How it works
+
+```
+React + TypeScript (Vite)  ──REST──►  FastAPI backend  ──►  SQLite (demo data, missions, audit)
+                                         ├─ backend/mission.py        mission engine: plan → human gates → steps → measure → learnings
+                                         ├─ backend/foundry_brain.py  Azure OpenAI brain (strict JSON) · SimulatedBrain fallback
+                                         ├─ backend/ai_client.py      API-key / Entra sign-in, daily limit, cache, usage meter
+                                         ├─ backend/payment_local.py  local Payment API sandbox: start, reconfigure, measure
+                                         └─ backend/workflow.py       governed actions (close, reopen, assign, escalate, …)
 ```
 
-The runner resets the active release/pool to v3.8.1 and 5, verifies PostgreSQL and Feature X, starts the previous release to confirm `GET /payments/summary` is absent, runs the same 50-request workload before and after pool restoration, checks actual service logs for SQLAlchemy `TimeoutError`, and retains each run under `test-results\stage1a\<sequence>\`. A failed run stops that sequence; correct the cause and run the complete three-cycle sequence again. The runner leaves v3.8.1 active at pool size 20 after a successful sequence.
+| Path | What's there |
+|---|---|
+| `src/pages/` | The 14 modules. `WarRoom.tsx` and `Agents.tsx` show missions. |
+| `src/components/war-room/` | Command view, mission panel, sandbox panel |
+| `src/theme-bridge.css` | The Kyndryl Bridge-style theme |
+| `backend/seed.py`, `backend/seed_stories.py` | Realistic demo data for every incident |
+| `payment_api/` | The Payment API sandbox service and its workload generator |
+| `tests/`, `backend/tests/`, `payment_api/tests/` | Browser (Playwright) and backend (pytest) tests |
+| `final_overview.md` | Full project overview and change history |
 
-To run the workload once without the acceptance assertions:
+**Agents:** Orchestrator plus 13 specialists:
+- Intake
+- Log analysis
+- Observability
+- Repository analysis
+- Knowledge retrieval
+- Root-cause analysis
+- Remediation
+- Test engineering
+- Security analysis
+- Validation
+- Change risk
+- Release coordination
+- Incident summary
 
-```powershell
-& .\.venv\Scripts\python.exe -m payment_api.workload --expect-errors --output test-results\stage1a\pool-5.json
-```
+They're grouped into four squads: **Investigate**, **Diagnose**, **Remediate & Validate** and **Govern & Release**.
 
-The adapter sets `PODMAN_COMPOSE_PROVIDER` explicitly for its child processes. For manual Compose commands in a new terminal, set it to the project venv's provider executable as shown above. To stop the sandbox without deleting its database volume:
+---
 
-```powershell
-podman compose --project-name behave-payment-sandbox --env-file payment_api\.env.sandbox --file compose.yaml down
-```
+## Tests
 
-To reset only the isolated sandbox database, add `--volumes` to `down`. This deletes the sandbox's named PostgreSQL volume and must not be used against another Compose project. The project owner must independently run Podman Compose, the workload and tests before accepting Stage 1A; see [the stage roadmap](docs/implementation-roadmap.md).
-
-Do not run `npm ci` while this project's Vite server is running. Windows can lock the Tailwind/Rolldown native modules; stop the project server with Ctrl+C before reinstalling dependencies. Do not stop unrelated Node processes or delete the lockfile.
-
-## Demo Boundaries
-
-- Initial access uses a local Incident Manager persona. The profile menu switches demo roles. These are not real organizational identities.
-- Records and audit events persist in SQLite, under the default `data` directory. The backend seeds a new empty demo database automatically.
-- Workflow coordination, test replay, deployment, rollback and recovery verification are explicitly synthetic. No repository, test runner, scanner or production infrastructure is executed.
-- Real manual incident/evidence entry, backend permission checks, validation, redaction and persisted review decisions work locally. Manually entered test outcomes are not independently executed or verified by this platform.
-- The application is single-workspace, not tenant-isolated. Do not put production secrets, restricted records or unnecessary personal data in the demo.
-- Pattern-based redaction is not comprehensive DLP or malware scanning. The local database is not tamper-proof storage. Declared retention is not an automated deletion policy.
-
-For handoff, include source, public assets, configuration examples, dependency manifests and the npm lockfile. Reinstall dependencies on the receiving computer; do not transfer the virtual environment or `node_modules`. Exclude real environment files, credentials, generated reports and database contents unless explicitly authorized. To transfer approved demo state, stop the backend before copying the database. Backup/restore and migration procedures have not been production-certified.
-
-## Optional Foundry Assessment
-
-Provider calls are read-only assessments, not automatic approvals or execution. Configure an actual authorized project endpoint, deployment and managed identity/Azure CLI identity using the existing settings in [.env.example](.env.example). No live cloud resources were connected during this upgrade.
-
-`AGENTICA_AI_ALLOWED_CLASSIFICATIONS` defaults to `[]`: provider data access is denied. After organizational approval, use a JSON list such as `["Internal"]` for the permitted data categories. Public, Internal and Confidential require explicit allowlisting; Restricted is always blocked until the necessary policy controls exist. User consent alone does not bypass this backend check.
-
-Evidence reliability (`classification`: Observed/Inferred/Unverified) is separate from sensitivity (`dataClassification`: Public/Internal/Confidential/Restricted). New incident/evidence records default to Internal; legacy records without sensitivity metadata are handled as Internal for outbound policy checks. Unknown sensitivity values fail closed as Restricted. Raw original uploads are not retained; new evidence records include collector, ingestion time, byte count, original/derivative hashes and a database derivative reference. This is not an object-storage implementation or a classification-based read-access system.
-
-Production mode requires PostgreSQL plus the Entra tenant and audience settings. Signed identity tokens must match the configured issuer, audience and tenant and contain an assigned application role. **Those checks do not make the application production-ready:** tenant-scoped records/queries, migrations, object storage, stronger audit governance and operational adapters are still required. Keep `AGENTICA_MODE=demo` for local use. Existing `AGENTICA_*` configuration names remain unchanged for compatibility.
-
-## Verification
-
-```powershell
+```bash
 npm run typecheck
 npm run lint
-npm run test:e2e
+npm run test:e2e                                                            # builds, then runs the browser tests on ports 15173/18001
+DATABASE_URL=sqlite:///:memory: AGENTICA_MODE=demo .venv/bin/python -m pytest backend/tests payment_api/tests -q
 ```
 
-Run backend tests against isolated storage, including the module-level application import:
+The tests never call Azure: they use the simulated planner and a fake AI client. One backend test starts the real Payment API process and checks failure and recovery.
 
-```powershell
-& {
-  $previousDatabase = $env:DATABASE_URL
-  $previousMode = $env:AGENTICA_MODE
-  try {
-    $env:DATABASE_URL = 'sqlite:///:memory:'
-    $env:AGENTICA_MODE = 'demo'
-    & .\.venv\Scripts\python.exe -m pytest backend/tests -q
-  } finally {
-    $env:DATABASE_URL = $previousDatabase
-    $env:AGENTICA_MODE = $previousMode
-  }
-}
-```
+---
 
-Browser tests build the frontend and own isolated servers on ports 15173 and 18001, with a fresh in-memory backend. Leave these ports free. On Windows they use installed Microsoft Edge and the project virtual environment; they do not mutate the user-facing demo database. These are development tests, not an implemented in-app Resilience Lab.
+## Honest limits
 
-Final verification for this increment: **48 backend tests passed; 8 browser tests passed; build, typecheck and lint passed.** This does not certify the unimplemented enterprise acceptance criteria listed in the [phase report](docs/upgrade-audit.md).
+- A single demo workspace with demo identities; this is not production-ready (no multi-tenancy, migrations or hardened security).
+- Agents reason over the evidence they're given. They have no tools of their own yet (e.g. querying logs directly).
+- The only real change an agent mission can make is the human-approved Payment API sandbox fix. Everything else is simulated and labelled as such.
+- The Payment API sandbox can also run in containers (`PAYMENT_SANDBOX_MODE=container`, see `compose.yaml`).
+
+More detail: [final_overview.md](final_overview.md) · [docs/architecture.md](docs/architecture.md) · [docs/implementation-roadmap.md](docs/implementation-roadmap.md)

@@ -52,11 +52,12 @@ export interface Incident {
   outcome: string
   recovery: null | {
     timestamp: string
-    errorRate: number
-    latency: number
+    errorRate: number | null
+    latency: number | null
     actor: string
     synthetic: boolean
     evidence: string
+    basis?: string
   }
   synthetic: boolean
 }
@@ -231,6 +232,8 @@ export interface Approval {
   reviewedBy: string | null
   decidedAt: string | null
   reason: string
+  missionId?: string
+  missionGateId?: string
 }
 
 export interface LogRecord {

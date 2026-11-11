@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   ArrowRight,
@@ -40,6 +40,7 @@ import {
 } from '../components/incident'
 
 export function Changes() {
+  const navigate = useNavigate()
   const {
     data,
     environment,
@@ -623,45 +624,58 @@ export function Changes() {
                 {selectedApproval.reason}
               </Notice>
             )}
-            <div className="release-actions">
-              <Button
-                disabled={
-                  !can('approval:decide', reviewChange.environment) ||
-                  selectedApproval.status !== 'Pending' ||
-                  selectedApproval.requestedBy === session.user.name
-                }
-                onClick={() => {
-                  selectIncident(selectedApproval.incidentId)
-                  setApprovalId(null)
-                  setActionDialog({
-                    incidentId: selectedApproval.incidentId,
-                    action: 'reject',
-                  })
-                }}
-              >
-                <X size={15} />
-                Reject
-              </Button>
-              <Button
-                variant="primary"
-                disabled={
-                  !can('approval:decide', reviewChange.environment) ||
-                  selectedApproval.status !== 'Pending' ||
-                  selectedApproval.requestedBy === session.user.name
-                }
-                onClick={() => {
-                  selectIncident(selectedApproval.incidentId)
-                  setApprovalId(null)
-                  setActionDialog({
-                    incidentId: selectedApproval.incidentId,
-                    action: 'approve',
-                  })
-                }}
-              >
-                <ShieldCheck size={18} />
-                Approve change
-              </Button>
-            </div>
+            {selectedApproval.missionId ? (
+              <Notice title="Decided in the agent mission">
+                This approval belongs to agent mission <strong>{selectedApproval.missionId}</strong>. A different person from the
+                mission starter decides it in the AI War Room, and the mission continues automatically after the decision.
+                <div className="release-actions">
+                  <Button variant="primary" onClick={() => { selectIncident(selectedApproval.incidentId); setApprovalId(null); navigate('/war-room') }}>
+                    <ShieldCheck size={18} />
+                    Decide in AI War Room
+                  </Button>
+                </div>
+              </Notice>
+            ) : (
+              <div className="release-actions">
+                <Button
+                  disabled={
+                    !can('approval:decide', reviewChange.environment) ||
+                    selectedApproval.status !== 'Pending' ||
+                    selectedApproval.requestedBy === session.user.name
+                  }
+                  onClick={() => {
+                    selectIncident(selectedApproval.incidentId)
+                    setApprovalId(null)
+                    setActionDialog({
+                      incidentId: selectedApproval.incidentId,
+                      action: 'reject',
+                    })
+                  }}
+                >
+                  <X size={15} />
+                  Reject
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={
+                    !can('approval:decide', reviewChange.environment) ||
+                    selectedApproval.status !== 'Pending' ||
+                    selectedApproval.requestedBy === session.user.name
+                  }
+                  onClick={() => {
+                    selectIncident(selectedApproval.incidentId)
+                    setApprovalId(null)
+                    setActionDialog({
+                      incidentId: selectedApproval.incidentId,
+                      action: 'approve',
+                    })
+                  }}
+                >
+                  <ShieldCheck size={18} />
+                  Approve change
+                </Button>
+              </div>
+            )}
             {!can('approval:decide', reviewChange.environment) && (
               <Notice title="Separate approver required">
                 The current role can review evidence but cannot approve. The

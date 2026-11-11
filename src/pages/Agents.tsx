@@ -33,8 +33,9 @@ import {
   EventTimeline,
   EvidenceLinks,
   IncidentSelector,
-  WorkflowControls,
+  NextActionButton,
 } from '../components/incident'
+import { latestMission, missionTeam } from '../lib/missions'
 
 function CollaborationGraph({
   tasks,
@@ -122,8 +123,13 @@ export function Agents() {
     params.get('task')
   )
   if (!incident) return <EmptyState title="No incident selected" />
-  const tasks = data.agents.filter((agent) => agent.incidentId === incident.id)
-  const selected = data.agents.find((task) => task.id === selectedId)
+  const mission = latestMission(data.missions, incident.id)
+  const team = missionTeam(incident, mission)
+  // The Orchestrator's team for this incident (mission-driven, not a fixed roster).
+  const tasks = mission ? team.agents : []
+  const selected = tasks.find((task) => task.id === selectedId)
+  const aiMode = mission?.mode ?? data.aiMode ?? 'SIMULATED / rule-based planner'
+  const usage = data.aiUsage
   const columns: ColumnDef<Agent>[] = [
     {
       accessorKey: 'name',
@@ -196,13 +202,24 @@ export function Agents() {
     <div className="page-enter">
       <PageHeader
         title="Agent orchestration"
-        description="Coordinated workers / Bounded tools / Persisted checkpoints"
-        actions={<Badge tone="outline">Synthetic execution mode</Badge>}
+        description="Orchestrator-formed teams / Human-approved decisions / Persisted checkpoints"
+        actions={<Badge tone="outline">{aiMode.split(' / ')[0]}</Badge>}
       />
       <div className="module-context-bar">
         <IncidentSelector />
-        <WorkflowControls incident={incident} />
+        <NextActionButton incident={incident} secondary />
+        {mission && (
+          <span className="muted">
+            {mission.id} · {mission.status} · iteration {mission.iteration} of {mission.maxIterations} · {team.caption}
+          </span>
+        )}
       </div>
+      {!mission && (
+        <Notice title="No agent mission for this incident yet">
+          The Orchestrator forms a team per ticket. Start a mission with <strong>Investigate incident</strong>: it analyses the
+          ticket and its evidence, proposes only the specialists it needs, and waits for your approval in the AI War Room.
+        </Notice>
+      )}
       <div className="metrics-grid four">
         <Metric
           label="Running"
@@ -210,7 +227,7 @@ export function Agents() {
             .filter((task) => task.status === 'Running')
             .length.toString()
             .padStart(2, '0')}
-          detail="Active synthetic tasks"
+          detail="Agents working now"
           icon={Activity}
           critical
         />
@@ -220,7 +237,7 @@ export function Agents() {
             .filter((task) => task.status === 'Queued')
             .length.toString()
             .padStart(2, '0')}
-          detail="Waiting on task dependencies"
+          detail="Waiting for their step"
           icon={Clock3}
         />
         <Metric
@@ -229,7 +246,7 @@ export function Agents() {
             .filter((task) => task.status === 'Waiting for Human Approval')
             .length.toString()
             .padStart(2, '0')}
-          detail="Explicit approval required"
+          detail="Waiting for a human decision"
           icon={ShieldCheck}
         />
         <Metric
@@ -238,7 +255,7 @@ export function Agents() {
             .filter((task) => task.status === 'Completed')
             .length.toString()
             .padStart(2, '0')}
-          detail={`${tasks.length} specialized worker tasks`}
+          detail={`${Math.max(tasks.length - 1, 0)} of 13 specialists on this team`}
           icon={CheckCheck}
         />
       </div>
@@ -278,16 +295,29 @@ export function Agents() {
               ))}
             </Select>
           }
-          emptyTitle="No matching tasks"
-          emptyDescription="No task is available for this incident and status filter."
+          emptyTitle={mission ? 'No matching agents' : 'No team yet'}
+          emptyDescription={mission ? 'No agent matches this status filter.' : 'Start an agent mission to have the Orchestrator form a team.'}
         />
+      )}
+      {tab === 'Task board' && team.skipped.length > 0 && (
+        <div className="agents-left-out">
+          <SectionHeader title={`Left out by the Orchestrator (${team.skipped.length})`} caption="Each specialist not on the team, with the reason" />
+          <ul>
+            {team.skipped.map((item) => (
+              <li key={item.role}>
+                <strong>{item.name}</strong>
+                <span>{item.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {tab === 'Collaboration graph' && (
         <>
           <SectionHeader
-            title="Task dependency graph"
-            caption="Parallel analysis branches converge before a remediation proposal"
-            actions={<Badge>{incident.workflowStatus}</Badge>}
+            title="Team hand-off graph"
+            caption="The Orchestrator hands work to each step; findings flow to the next step"
+            actions={<Badge>{mission?.status ?? 'No mission'}</Badge>}
           />
           {tasks.length ? (
             <CollaborationGraph
@@ -296,14 +326,14 @@ export function Agents() {
             />
           ) : (
             <EmptyState
-              title="No workflow graph"
-              description="An investigation has not been started for this incident."
+              title="No team yet"
+              description="Start an agent mission to see the Orchestrator's team and hand-offs."
             />
           )}
           <Notice title="Execution policy">
-            Evidence-only deterministic demo workers have no shell, network
-            tools or production write access. Independent context tasks share a
-            phase; later phases wait for their inputs.
+            Agents read the ticket and its evidence only: no shell, network tools
+            or production write access. The only real change an agent mission can
+            make is the human-approved Payment API sandbox fix.
           </Notice>
         </>
       )}
@@ -326,13 +356,13 @@ export function Agents() {
         <div>
           <LockKeyhole size={16} />
           <span>
-            Tool permissions<strong>Read-only fixture data</strong>
+            Tool permissions<strong>Read-only evidence; sandbox fix after approval</strong>
           </span>
         </div>
         <div>
           <Bot size={16} />
           <span>
-            Token usage<strong>Not available / no model calls</strong>
+            AI usage today<strong>{aiMode.startsWith('AI') ? `${usage?.calls ?? 0}/${usage?.limit ?? 0} calls · ${(usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)} tokens` : 'Simulated planner (no model calls)'}</strong>
           </span>
         </div>
       </div>
@@ -346,7 +376,7 @@ export function Agents() {
           <>
             <div className="detail-badges">
               <Badge>{selected.status}</Badge>
-              <Badge tone="outline">Demo worker</Badge>
+              <Badge tone="outline">{aiMode.split(' / ')[0]}</Badge>
             </div>
             <p className="body-copy">{selected.purpose}</p>
             <dl>
@@ -372,16 +402,14 @@ export function Agents() {
               <KeyValue label="Retry count">
                 {selected.retries} / {data.policy.maxRetries}
               </KeyValue>
-              <KeyValue label="Usage">
-                {selected.usage ?? 'Not measured; no model invocation'}
-              </KeyValue>
+              <KeyValue label="Produced by">{aiMode}</KeyValue>
               <KeyValue label="Approval">
                 {selected.approvalRequired
                   ? 'Separate human approval required'
                   : 'Not required for this bounded task'}
               </KeyValue>
             </dl>
-            <h3 className="detail-section-title">Input evidence</h3>
+            <h3 className="detail-section-title">Evidence cited</h3>
             <EvidenceLinks
               ids={selected.inputs.filter((id) =>
                 data.evidence.some((record) => record.id === id)
@@ -399,11 +427,11 @@ export function Agents() {
                 <p className="muted">No outputs recorded yet.</p>
               )}
             </div>
-            <h3 className="detail-section-title">Task dependencies</h3>
+            <h3 className="detail-section-title">Receives work from</h3>
             <div className="task-dependencies">
               {selected.dependencies.map((id) => (
                 <button key={id} onClick={() => setSelectedId(id)}>
-                  {data.agents.find((task) => task.id === id)?.name ?? id}
+                  {tasks.find((task) => task.id === id)?.name ?? id}
                   <ArrowRight size={12} />
                 </button>
               ))}

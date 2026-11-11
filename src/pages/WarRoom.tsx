@@ -45,11 +45,11 @@ import {
   X,
 } from 'lucide-react'
 import { useIncident, useWorkspace } from '../context'
-import type { Agent, AgentStatus, Dependency, Service } from '../types'
+import type { Dependency, Service } from '../types'
 import type { MissionView } from '../components/war-room/AgentCommandView'
 import { MissionPanel } from '../components/war-room/MissionPanel'
 import { PaymentSandboxPanel } from '../components/war-room/PaymentSandboxPanel'
-import { latestMission, ROLE_NAMES } from '../lib/missions'
+import { latestMission, missionTeam, ROLE_NAMES } from '../lib/missions'
 import { dateTime, elapsed, number, sla, time } from '../lib/format'
 import '../components/war-room/war-room-3d.css'
 import {
@@ -610,60 +610,7 @@ function WarRoomWorkspace() {
   )
   const incidentAgents = data.agents.filter((agent) => agent.incidentId === incident.id)
   const mission = latestMission(data.missions, incident.id)
-  const missionIteration = mission?.iterations[mission.iterations.length - 1]
-  const missionCaption = !mission
-    ? 'Awaiting ticket analysis'
-    : {
-      Analysing: `Analysing ticket · iteration ${mission.iteration}`,
-      'Awaiting team approval': 'Team proposed · awaiting approval',
-      Working: `Team at work · iteration ${mission.iteration}`,
-      'Awaiting decision': 'Awaiting human decision',
-      'Awaiting resolution review': 'Outcome ready for review',
-      Resolved: `Resolved · iteration ${mission.iteration}`,
-      Escalated: 'Escalated to a human',
-      Cancelled: 'Mission cancelled',
-      Paused: 'Mission paused',
-    }[mission.status]
-  const orchestratorStatus: AgentStatus = !mission
-    ? 'Idle'
-    : mission.status === 'Analysing' || mission.status === 'Working'
-      ? 'Running'
-      : mission.status.startsWith('Awaiting')
-        ? 'Waiting for Human Approval'
-        : mission.status === 'Resolved'
-          ? 'Completed'
-          : mission.status === 'Escalated'
-            ? 'Failed'
-            : mission.status === 'Cancelled'
-              ? 'Cancelled'
-              : 'Paused'
-  const missionLimitations = mission
-    ? `${mission.mode}. Findings come from the mission planner, not live tools; humans approve every important step.`
-    : 'No mission yet. Start an agent mission to have the Orchestrator form a team.'
-  const proposedTeam = missionIteration && !missionIteration.team.length && missionIteration.plan ? missionIteration.plan.selected : []
-  const missionAgents: Agent[] = [
-    {
-      id: `${mission?.id ?? incident.id}-orchestrator`, role: 'orchestrator', name: 'Orchestrator',
-      purpose: 'Analyses the ticket, forms the team, coordinates hand-offs and asks humans for every important decision.',
-      status: orchestratorStatus, task: missionIteration?.plan?.analysis ?? missionCaption, incidentId: incident.id,
-      startedAt: mission?.createdAt ?? null, lastActivity: mission?.updatedAt ?? null, dependencies: [], inputs: [], outputs: [],
-      retries: 0, usage: null, approvalRequired: true, phase: -1, limitations: missionLimitations,
-    },
-    ...(missionIteration?.team ?? []).map((member): Agent => ({
-      id: member.id, role: member.role, name: member.name, purpose: `Chosen because: ${member.reason}`,
-      status: member.status === 'Not reached' ? 'Cancelled' : member.status, task: member.findings?.summary ?? member.task,
-      incidentId: incident.id, startedAt: member.startedAt, lastActivity: member.completedAt ?? member.startedAt,
-      dependencies: [], inputs: member.findings?.evidenceIds ?? [], outputs: [], retries: 0, usage: null,
-      approvalRequired: member.role === 'remediation' || member.role === 'root-cause', phase: 0,
-      limitations: member.findings?.source ? `${member.findings.source}. Humans approve every important step.` : missionLimitations,
-    })),
-    ...proposedTeam.map((item): Agent => ({
-      id: `${mission?.id}-proposed-${item.role}`, role: item.role, name: ROLE_NAMES[item.role] ?? item.role,
-      purpose: `Proposed because: ${item.reason}`, status: 'Waiting for Human Approval', task: 'Proposed by the Orchestrator; waiting for team approval',
-      incidentId: incident.id, startedAt: null, lastActivity: null, dependencies: [], inputs: [], outputs: [], retries: 0,
-      usage: null, approvalRequired: true, phase: 0, limitations: missionLimitations,
-    })),
-  ]
+  const { iteration: missionIteration, caption: missionCaption, agents: missionAgents, proposed: proposedTeam } = missionTeam(incident, mission)
   const missionView: MissionView = {
     caption: missionCaption,
     running: mission?.status === 'Analysing' || mission?.status === 'Working',

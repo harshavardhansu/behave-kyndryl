@@ -153,3 +153,79 @@ def test_demo_reset_restores_stories(app_and_sandbox):
     assert snapshot["missions"] == [] and len(snapshot["incidents"]) == 13
     login(client, "Incident Manager")
     assert client.post("/api/v1/admin/demo-reset").status_code == 403
+
+
+def workspace(client):
+    return client.get("/api/v1/workspace").json()
+
+
+def incident_status(client, incident_id="INC-1043"):
+    return next(item for item in workspace(client)["incidents"] if item["id"] == incident_id)
+
+
+def test_mission_drives_incident_change_and_approval_records(app_and_sandbox):
+    client, _ = app_and_sandbox
+    login(client)
+    client.post("/api/v1/sandbox/payment/start")
+    mission_id = client.post("/api/v1/incidents/INC-1043/missions").json()["missionId"]
+    assert incident_status(client)["status"] == "Triaged"
+    decide(client, mission_id)
+    assert incident_status(client)["status"] in {"Investigating", "Root Cause Identified"}
+    decide(client, mission_id)
+    snapshot = workspace(client)
+    incident = next(item for item in snapshot["incidents"] if item["id"] == "INC-1043")
+    assert incident["status"] == "Awaiting Approval"
+    gate = mission_state(client, mission_id)["pendingGate"]
+    approval = next(item for item in snapshot["approvals"] if item["id"] == gate["approvalId"])
+    assert approval["status"] == "Pending" and approval["missionId"] == mission_id
+    change = next(item for item in snapshot["changes"] if item["id"] == gate["changeId"])
+    assert change["status"] == "Approval" and change["approvalId"] == approval["id"]
+
+    login(client, "Change Approver")
+    legacy = client.post("/api/v1/incidents/INC-1043/actions", json={"action": "approve", "confirmation": "APPROVE"}, headers={"Idempotency-Key": "legacy-approve-1"})
+    assert legacy.status_code == 409 and "AI War Room" in legacy.json()["detail"]
+    decide(client, mission_id)
+    snapshot = workspace(client)
+    assert next(item for item in snapshot["approvals"] if item["id"] == approval["id"])["status"] == "Approved"
+    assert next(item for item in snapshot["incidents"] if item["id"] == "INC-1043")["status"] == "Monitoring"
+    assert any(item["changeId"] == change["id"] and item["environment"] == "Sandbox" for item in snapshot["deployments"])
+
+    login(client)
+    decide(client, mission_id, "resolve")
+    snapshot = workspace(client)
+    incident = next(item for item in snapshot["incidents"] if item["id"] == "INC-1043")
+    assert incident["status"] == "Resolved" and incident["workflowStatus"] == "Completed"
+    assert incident["recovery"]["basis"] == "MEASURED" and incident["recovery"]["errorRate"] == 0
+    assert next(item for item in snapshot["changes"] if item["id"] == change["id"])["status"] == "Completed"
+    closed = client.post("/api/v1/incidents/INC-1043/actions", json={"action": "close", "reason": "Measured recovery confirmed by the incident manager."}, headers={"Idempotency-Key": "legacy-close-1"})
+    assert closed.status_code == 200, closed.text
+
+
+def test_rejected_fix_updates_approval_and_restarts(app_and_sandbox):
+    client, _ = app_and_sandbox
+    login(client)
+    mission_id = client.post("/api/v1/incidents/INC-1043/missions").json()["missionId"]
+    decide(client, mission_id)
+    decide(client, mission_id)
+    approval_id = mission_state(client, mission_id)["pendingGate"]["approvalId"]
+    login(client, "Change Approver")
+    gate = mission_state(client, mission_id)["pendingGate"]
+    response = client.post(f"/api/v1/missions/{mission_id}/decision", json={"gateId": gate["id"], "decision": "reject", "note": "Needs a rollback plan first"})
+    assert response.status_code == 200, response.text
+    snapshot = workspace(client)
+    assert next(item for item in snapshot["approvals"] if item["id"] == approval_id)["status"] == "Rejected"
+    assert next(item for item in snapshot["incidents"] if item["id"] == "INC-1043")["status"] == "Investigating"
+
+
+def test_cancelled_mission_withdraws_pending_approval(app_and_sandbox):
+    client, _ = app_and_sandbox
+    login(client)
+    mission_id = client.post("/api/v1/incidents/INC-1043/missions").json()["missionId"]
+    decide(client, mission_id)
+    decide(client, mission_id)
+    approval_id = mission_state(client, mission_id)["pendingGate"]["approvalId"]
+    assert client.post(f"/api/v1/missions/{mission_id}/cancel").status_code == 200
+    snapshot = workspace(client)
+    assert next(item for item in snapshot["approvals"] if item["id"] == approval_id)["status"] == "Rejected"
+    assert next(item for item in snapshot["incidents"] if item["id"] == "INC-1043")["status"] == "Investigating"
+    assert client.post("/api/v1/incidents/INC-1043/missions").status_code == 201

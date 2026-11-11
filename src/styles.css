@@ -7195,3 +7195,68 @@ button.metric:hover {
         min-width: 200px;
     }
 }
+/* Agent orchestration: specialists the Orchestrator left out */
+.agents-left-out {
+    margin-top: 18px;
+}
+
+.agents-left-out ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.agents-left-out li {
+    display: grid;
+    gap: 3px;
+    padding: 9px 12px;
+    border: 1px dashed #c6c6c6;
+    border-radius: 4px;
+    background: #fafafa;
+    font-size: 12px;
+}
+
+.agents-left-out strong {
+    font-weight: 500;
+}
+
+.agents-left-out span {
+    color: #6f6f6f;
+    line-height: 1.45;
+}
+
+/* Agent orchestration: specialists the Orchestrator left out */
+.agents-left-out {
+    margin-top: 18px;
+}
+
+.agents-left-out ul {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.agents-left-out li {
+    display: grid;
+    gap: 3px;
+    padding: 9px 12px;
+    border: 1px dashed #c6c6c6;
+    border-radius: 4px;
+    background: #fafafa;
+    font-size: 12px;
+}
+
+.agents-left-out strong {
+    font-weight: 500;
+}
+
+.agents-left-out span {
+    color: #6f6f6f;
+    line-height: 1.45;
+}

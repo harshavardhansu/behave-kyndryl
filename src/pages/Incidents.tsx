@@ -495,10 +495,15 @@ export function IncidentDetail() {
                 </p>
                 {incident.recovery && (
                   <Notice title="Recovery evidence recorded">
-                    {incident.recovery.synthetic ? 'Synthetic' : 'Recorded'}{' '}
-                    verification: error rate {incident.recovery.errorRate}%,
-                    latency {incident.recovery.latency} ms. Recorded by{' '}
-                    {incident.recovery.actor}.
+                    {incident.recovery.errorRate === null || incident.recovery.latency === null ? (
+                      <>{incident.recovery.basis ?? 'Human-confirmed resolution'}. Confirmed by {incident.recovery.actor}.</>
+                    ) : (
+                      <>
+                        {incident.recovery.basis === 'MEASURED' ? 'Measured' : incident.recovery.synthetic ? 'Synthetic' : 'Recorded'}{' '}
+                        verification: error rate {incident.recovery.errorRate}%, latency {incident.recovery.latency} ms. Recorded by{' '}
+                        {incident.recovery.actor}.
+                      </>
+                    )}
                   </Notice>
                 )}
                 {incident.outcome && (

@@ -317,6 +317,131 @@ def _new_iteration(mission: dict, number: int) -> None:
 
 
 # --------------------------------------------------------------------------
+# Keep the incident, change, approval and deployment records in step with
+# the mission, so every page (Incidents, Changes, Command centre, Reports)
+# tells the same story. The mission is the engine; these are its effects.
+# --------------------------------------------------------------------------
+
+
+def _mission_change(state: dict, mission: dict, incident: dict, summary: str) -> dict:
+    change = next((record for record in state["changes"] if record["id"] == mission.get("changeId")), None)
+    change = change or next((record for record in state["changes"] if record["incidentId"] == incident["id"] and record["status"] not in {"Completed", "Rolled Back"}), None)
+    if change is None:
+        change = {
+            "id": identifier("CHG"), "incidentId": incident["id"], "title": ("Agent mission fix: " + summary)[:120], "status": "Draft", "risk": "Medium",
+            "owner": mission["requestedBy"], "environment": incident["environment"], "branch": f"mission/{mission['id'].lower()}", "commit": f"mission-{mission['id'].lower()}",
+            "files": ["Proposed by the Remediation agent (see mission findings)"], "diff": redact(summary)[:2000],
+            "rollback": "Revert to the last known-good configuration and re-verify error rate and latency.",
+            "plan": ["Review the agent findings and evidence", "Obtain separate human approval", "Apply the change", "Verify recovery"],
+            "justification": "Proposed by the agent mission after a human-approved root cause.", "approvalId": None, "gates": [],
+        }
+        state["changes"].append(change)
+    mission["changeId"] = change["id"]
+    return change
+
+
+def sync_records(state: dict, mission: dict) -> None:
+    incident = find(state, "incidents", mission["incidentId"])
+    if not mission["iterations"]:
+        return
+    current = _current(mission)
+    system = {"name": "Agent mission", "role": "Orchestrator", "id": "agent-mission"}
+    approved = {decision["type"] for decision in current["decisions"] if decision["decision"] == "approve"}
+    gate = mission.get("pendingGate")
+    change = next((record for record in state["changes"] if record["id"] == mission.get("changeId")), None)
+
+    # Fix awaiting a human: make it a real change + approval on the Changes page.
+    if gate and gate["type"] == "fix":
+        remediation = next((member for member in current["team"] if member["role"] == "remediation" and member.get("findings")), None)
+        change = _mission_change(state, mission, incident, (remediation or {}).get("findings", {}).get("summary", gate["detail"]))
+        approval = next((item for item in state["approvals"] if item.get("missionGateId") == gate["id"]), None)
+        if approval is None:
+            approval = {"id": identifier("APR"), "changeId": change["id"], "incidentId": incident["id"], "title": change["title"], "requestedBy": mission["requestedBy"],
+                        "requestedById": mission["requestedById"], "requestedAt": now(), "status": "Pending", "reviewedBy": None, "decidedAt": None, "reason": "",
+                        "missionId": mission["id"], "missionGateId": gate["id"]}
+            state["approvals"].append(approval)
+        change.update(status="Approval", approvalId=approval["id"])
+        gate["changeId"], gate["approvalId"] = change["id"], approval["id"]
+
+    # Record the human decision on the approval (any iteration: a rejected fix starts a new one).
+    for decision in (item for iteration in mission["iterations"] for item in iteration["decisions"]):
+        if decision["type"] != "fix":
+            continue
+        approval = next((item for item in state["approvals"] if item.get("missionGateId") == decision["gateId"]), None)
+        if approval and approval["status"] == "Pending":
+            approval.update(status="Approved" if decision["decision"] == "approve" else "Rejected", reviewedBy=decision["by"], reviewedById=decision["byId"],
+                            decidedAt=decision["at"], reason=decision["note"] or ("Approved in the agent mission." if decision["decision"] == "approve" else "Rejected in the agent mission."))
+            target = next((record for record in state["changes"] if record["id"] == approval["changeId"]), None)
+            if target:
+                target["status"] = "Scheduled" if decision["decision"] == "approve" else "Draft"
+
+    deployed = (current.get("sandboxChange") or {}).get("status") == "SUCCEEDED" or ("fix" in approved and mission["status"] in {"Awaiting resolution review", "Resolved"})
+    if deployed and change and not current.get("deploymentId"):
+        sandbox = current.get("sandboxChange") or {}
+        deployment_id = identifier("DEP")
+        state["deployments"].append({
+            "id": deployment_id, "changeId": change["id"], "service": incident["service"],
+            "version": (sandbox.get("active") or {}).get("release", "mission fix"), "environment": incident["environment"], "timestamp": now(),
+            "status": "Succeeded and active configuration verified" if sandbox.get("status") == "SUCCEEDED" else "Simulated release after human approval",
+        })
+        current["deploymentId"] = deployment_id
+        change["status"] = "Post-Deployment Verification"
+
+    # Incident lifecycle status, derived from where the mission is.
+    if mission["status"] == "Cancelled":
+        # Withdraw anything the mission left half-way, so a new mission can start cleanly.
+        for approval in state["approvals"]:
+            if approval.get("missionId") == mission["id"] and approval["status"] == "Pending":
+                approval.update(status="Rejected", reason="Withdrawn: the agent mission was cancelled.", decidedAt=now())
+                target_change = next((record for record in state["changes"] if record["id"] == approval["changeId"]), None)
+                if target_change and target_change["status"] == "Approval":
+                    target_change.update(status="Draft", approvalId=None)
+        if incident["status"] in {"Triaged", "Root Cause Identified", "Fix Proposed", "Awaiting Approval", "Approved"}:
+            previous = incident["status"]
+            incident["status"] = "Investigating"
+            audit(state, system, "Incident status updated by agent mission", incident["id"], incident, previous=previous, next_state="Investigating", evidence=mission["id"])
+        incident["workflowStatus"] = "Idle"
+        return
+    if mission["status"] == "Escalated":
+        incident["workflowStatus"] = "Idle"
+        return
+    if mission["status"] == "Resolved":
+        target = "Resolved"
+    elif deployed:
+        target = "Monitoring"
+    elif "fix" in approved:
+        target = "Approved"
+    elif gate and gate["type"] == "fix":
+        target = "Awaiting Approval"
+    elif "root-cause" in approved:
+        target = "Root Cause Identified"
+    elif current["team"] or mission["iteration"] > 1:
+        target = "Investigating"
+    else:
+        target = "Triaged" if incident["status"] in {"New", "Reopened"} else incident["status"]
+    if incident["status"] != target:
+        previous = incident["status"]
+        incident["status"] = target
+        audit(state, system, "Incident status updated by agent mission", incident["id"], incident, previous=previous, next_state=target, evidence=mission["id"])
+    incident["workflowStatus"] = "Running" if mission["status"] in RUNNING_STATUSES else "Completed" if mission["status"] == "Resolved" else "Idle"
+
+    if mission["status"] == "Resolved":
+        if change and change["status"] != "Completed":
+            change["status"] = "Completed"
+        if not incident.get("recovery"):
+            outcome = current.get("outcome") or {}
+            measurement = outcome.get("measurement")
+            resolution = mission.get("resolution") or {}
+            incident["recovery"] = {
+                "timestamp": now(), "actor": resolution.get("by", mission["requestedBy"]),
+                "errorRate": measurement["errorRate"] if measurement else None, "latency": measurement["p95Ms"] if measurement else None,
+                "synthetic": not measurement, "evidence": (outcome.get("evidenceIds") or [""])[0],
+                "basis": "MEASURED" if measurement else "Human-confirmed after agent mission (not measured)",
+            }
+            incident["outcome"] = redact(resolution.get("note") or outcome.get("detail", ""))[:1000]
+
+
+# --------------------------------------------------------------------------
 # Commands
 # --------------------------------------------------------------------------
 
@@ -339,6 +464,7 @@ def start_mission(state: dict, incident_id: str, user: dict, brain: MissionBrain
     _new_iteration(mission, 1)
     missions.append(mission)
     audit(state, user, "Agent mission started", mission["id"], incident, next_state="Orchestrator analysing")
+    sync_records(state, mission)
     return {"missionId": mission["id"], "runToken": mission["runToken"], "launch": True}
 
 
@@ -469,6 +595,7 @@ def decide(state: dict, mission_id: str, payload: DecisionInput, user: dict) -> 
     if mission.get("pendingGate") and mission["pendingGate"]["id"] == gate["id"]:
         mission["pendingGate"] = None
     audit(state, user, f"Mission decision: {gate['title']}", mission["id"], incident, next_state=f"{payload.decision} / {mission['status']}", outcome=payload.decision)
+    sync_records(state, mission)
     return {"missionId": mission["id"], "status": mission["status"], "runToken": mission["runToken"], "launch": launch}
 
 
@@ -486,6 +613,7 @@ def cancel_mission(state: dict, mission_id: str, user: dict) -> dict:
             member["status"] = "Cancelled"
     _event(mission, "cancelled", f"{user['name']} cancelled the mission.", actor=user["name"])
     audit(state, user, "Agent mission cancelled", mission["id"], incident, next_state="Cancelled")
+    sync_records(state, mission)
     return {"missionId": mission["id"], "status": mission["status"], "launch": False}
 
 
@@ -595,6 +723,14 @@ def _note_fallback(mission: dict, source: str | None, what: str) -> None:
 
 
 def _advance(state: dict, mission_id: str, token: int, brain: MissionBrain, tools: "MissionTools | None" = None) -> bool:
+    keep_going = _advance_step(state, mission_id, token, brain, tools)
+    mission = find_mission(state, mission_id)
+    if mission["runToken"] == token:
+        sync_records(state, mission)
+    return keep_going
+
+
+def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain, tools: "MissionTools | None" = None) -> bool:
     mission = find_mission(state, mission_id)
     if mission["runToken"] != token or mission["status"] not in RUNNING_STATUSES:
         return False
