@@ -112,33 +112,27 @@ test('graph nodes, edges, health filters, zoom and reset are interactive', async
   await expect(page.locator('.inspector-identity h3')).toHaveText('Redis cache')
 })
 
-test('War Room defaults to the 3D recorded workforce and opens agent evidence', async ({ page }) => {
+test('War Room command view shows the orchestrator, lifecycle squads and opens agent evidence', async ({ page }) => {
   await openWorkspace(page, '/war-room')
-  await expect(page.getByRole('button', { name: '3D workforce' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.workforce-stage canvas')).toBeVisible()
-  await expect(page.locator('.workforce-core-label')).toContainText('ORCHESTRATOR')
+  await expect(page.getByRole('button', { name: 'Command view' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.cmd-hub .workforce-core-label')).toContainText('ORCHESTRATOR')
   await expect(page.locator('.workforce-truth-row')).toContainText('SIMULATED')
   await expect(page.locator('.workforce-integrity-note')).toContainText('planner selection/skip decisions')
-  const webglAvailable = await page.locator('.workforce-stage canvas').evaluate((canvas: HTMLCanvasElement) => Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl')))
-  if (webglAvailable) {
-    expect(await page.locator('.workforce-agent-label').count()).toBeGreaterThan(0)
-    const canvasPixels = await screenshotPixelSummary(page, await page.locator('.workforce-stage canvas').screenshot())
-    expect(canvasPixels.width).toBeGreaterThan(300)
-    expect(canvasPixels.height).toBeGreaterThan(300)
-    expect(canvasPixels.redPixels).toBeGreaterThan(0)
-    expect(canvasPixels.nonBackgroundPixels).toBeGreaterThan(500)
-    const logAgentLabel = page.locator('.workforce-agent-label').filter({ hasText: 'Log analysis' }).first()
-    if (await logAgentLabel.count()) {
-      const bounds = await logAgentLabel.boundingBox()
-      expect(bounds).not.toBeNull()
-      await page.mouse.click(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height + 14)
-      await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
-      await expect(page.locator('.workforce-agent-inspector')).toContainText('EVD-301')
-    }
-  } else {
-    await expect(page.locator('.workforce-canvas-fallback')).toContainText('2D workforce fallback')
-    await expect(page.locator('.workforce-canvas-fallback .workforce-list-agent')).toHaveCount(14)
+  await expect(page.locator('.cmd-squad')).toHaveCount(4)
+  for (const squad of ['Investigate', 'Diagnose', 'Remediate & Validate', 'Govern & Release']) {
+    await expect(page.locator('.cmd-squad-pill').filter({ hasText: squad })).toHaveCount(1)
   }
+  await expect(page.locator('.cmd-member')).toHaveCount(13)
+  await expect(page.locator('.cmd-gate').first()).toContainText('Human approval')
+  await expect(page.locator('.cmd-fan').first()).toBeVisible()
+  const stagePixels = await screenshotPixelSummary(page, await page.locator('.cmd-stage').screenshot({ animations: 'disabled' }))
+  expect(stagePixels.width).toBeGreaterThan(600)
+  expect(stagePixels.height).toBeGreaterThan(400)
+  expect(stagePixels.redPixels).toBeGreaterThan(0)
+  await page.locator('.cmd-member').filter({ hasText: 'Log analysis' }).click()
+  await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.workforce-agent-inspector')).toContainText('EVD-301')
+  await expect(page.locator('.cmd-details')).toContainText('Log analysis')
   await page.getByRole('button', { name: '2D list' }).click()
   await expect(page.locator('.workforce-list-agent')).toHaveCount(14)
   await page.locator('.workforce-list-agent').filter({ hasText: 'Log analysis' }).click()
@@ -147,17 +141,18 @@ test('War Room defaults to the 3D recorded workforce and opens agent evidence', 
   await expect(page.locator('.workforce-agent-inspector')).toContainText('EVD-301')
 })
 
-test('War Room exposes the complete 2D workforce when WebGL is unavailable', async ({ page }) => {
-  await page.addInitScript(() => {
-    HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext
-  })
+test('War Room command search highlights matches and selects an agent', async ({ page }) => {
   await openWorkspace(page, '/war-room')
-  await expect(page.locator('.workforce-fallback-note')).toBeVisible()
-  await expect(page.locator('.workforce-fallback-note')).toContainText('accessible 2D workforce')
-  await expect(page.locator('.workforce-stage .workforce-list-agent')).toHaveCount(14)
-  await expect(page.locator('.workforce-core-label')).toContainText('ORCHESTRATOR')
-  await expect(page.getByRole('button', { name: 'Toggle agent labels' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Reset workforce camera' })).toBeDisabled()
+  const search = page.getByRole('textbox', { name: 'Search the workforce' })
+  await search.fill('root')
+  await expect(page.locator('.cmd-member').filter({ hasText: 'Log analysis' })).toHaveClass(/is-dim/)
+  await expect(page.locator('.cmd-member').filter({ hasText: 'Root-cause analysis' })).not.toHaveClass(/is-dim/)
+  await search.press('Enter')
+  await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.workforce-agent-inspector')).toContainText('Root-cause analysis')
+  await page.getByRole('combobox', { name: 'Filter workforce by status' }).selectOption('Completed')
+  await search.fill('')
+  await expect(page.locator('.cmd-member.is-dim').first()).toBeVisible()
 })
 
 test('incident intake validates input and uploads redacted evidence', async ({ page }) => {
@@ -315,14 +310,9 @@ test('desktop, tablet and mobile layouts stay within the viewport', async ({ pag
       await navigate(page, path)
       await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
       if (path === '/war-room') {
-        if (viewport.width <= 700) {
-          await expect(page.locator('.workforce-list-agent').first()).toBeVisible()
-          const fallbackPixels = await screenshotPixelSummary(page, await page.locator('.workforce-stage').screenshot())
-          expect(fallbackPixels.width).toBeGreaterThan(300)
-          expect(fallbackPixels.height).toBeGreaterThan(300)
-          expect(fallbackPixels.nonBackgroundPixels).toBeGreaterThan(500)
-        }
-        else await expect(page.locator('.workforce-agent-label').first()).toBeVisible()
+        if (viewport.width <= 820) await expect(page.locator('.cmd-compact .cmd-member').first()).toBeVisible()
+        else await expect(page.locator('.cmd-card')).toHaveCount(4)
+        await expect(page.locator('.cmd-hub')).toBeVisible()
       }
       const overflow = await page.evaluate(() => ({
         width: innerWidth,

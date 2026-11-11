@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Background,
@@ -72,9 +72,9 @@ import {
   WorkflowControls,
 } from '../components/incident'
 
-const AgentWorkforce3D = lazy(() =>
-  import('../components/war-room/AgentWorkforce3D').then((module) => ({
-    default: module.AgentWorkforce3D,
+const AgentCommandView = lazy(() =>
+  import('../components/war-room/AgentCommandView').then((module) => ({
+    default: module.AgentCommandView,
   }))
 )
 
@@ -587,6 +587,7 @@ function WarRoomWorkspace() {
   )
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(params.get('agent'))
   const [visualization, setVisualization] = useState<'workforce' | 'topology'>('workforce')
+  const inspectorRef = useRef<HTMLElement>(null)
   if (!incident)
     return (
       <EmptyState
@@ -725,7 +726,7 @@ function WarRoomWorkspace() {
         </div>
       </div>
       <WorkflowSteps status={incident.status} />
-      <div className="war-main-grid">
+      <div className={`war-main-grid ${visualization === 'workforce' ? 'command-mode' : ''}`}>
         <aside className="war-context">
           <div className="war-panel-heading">
             <h3>Incident context</h3>
@@ -854,16 +855,21 @@ function WarRoomWorkspace() {
                 <span>Workflow {incident.workflowStatus}</span>
                 <span>{incidentAgents.length} persisted agent tasks</span>
               </div>
-              <Suspense fallback={<div className="workforce-loading">Loading the workforce scene…</div>}>
-                <AgentWorkforce3D
+              <Suspense fallback={<div className="workforce-loading">Loading the agent command view…</div>}>
+                <AgentCommandView
+                  incident={incident}
                   agents={incidentAgents}
                   evidence={incidentEvidence}
+                  hypotheses={data.hypotheses.filter((hypothesis) => hypothesis.incidentId === incident.id)}
+                  change={change}
+                  approval={activeApproval}
                   selectedId={selectedAgent?.id ?? null}
                   onSelectEvidence={setEvidenceFor}
                   onSelect={(agent) => {
                     setSelectedAgentId(agent.id)
                     setInspector('Agent')
                   }}
+                  onShowDetails={() => inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 />
               </Suspense>
               <p className="workforce-integrity-note">The backend does not expose planner selection/skip decisions or communication events; this view shows recorded task states, declared dependencies, and linked evidence only.</p>
@@ -884,7 +890,7 @@ function WarRoomWorkspace() {
             </ReactFlowProvider>
           )}
         </section>
-        <aside className="war-findings">
+        <aside className="war-findings" ref={inspectorRef}>
           <Tabs
             items={[
               'Findings',

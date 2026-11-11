@@ -32,7 +32,7 @@ All UI and API labels use a fixed set of truthfulness terms: `REAL`, `MEASURED`,
 | **Visual theme** | The whole UI was restyled to match the Kyndryl Bridge developer console: white header, teal accent, dark-teal page banners, light grey page background, white cards and the Roboto font. |
 | **Logo** | "BEHAVE KYNDRYL" text replaced by a Bridge-style lowercase wordmark, **behave kyndryl**: **behave** in grey and **kyndryl** in red, followed by a "Command Centre" label after a divider. |
 | **Search fields** | Fixed a double border: a second box was drawn inside every search field. |
-| **AI War Room (3D)** | The dark sci-fi scene was rebuilt as a clean, light, professional view that matches the theme. |
+| **AI War Room** | The 3D scene was replaced by an animated **agent command view** in the site's light theme: the Orchestrator hub, four lifecycle squads, live squad dashboards, real project items and a human-approval gate. |
 | **Tests** | Browser tests updated for the new header, wordmark and War Room background. All suites pass. |
 | **Developer setup** | Dependencies reinstalled, `.env` created, a working `.venv` created for the backend and browser tests, and the Playwright Chromium browser installed. |
 
@@ -60,7 +60,7 @@ Details of each change are in sections 7–9.
 
 | Layer | Technology | Location |
 |---|---|---|
-| Frontend | React 19, TypeScript 7, Vite 8, Tailwind CSS 4, React Router 7, TanStack Query and Table, Radix UI, Recharts, XY Flow, React Three Fiber/Drei (3D); Roboto and IBM Plex Mono fonts | `src/` |
+| Frontend | React 19, TypeScript 7, Vite 8, Tailwind CSS 4, React Router 7, TanStack Query and Table, Radix UI, Recharts, XY Flow; Roboto and IBM Plex Mono fonts | `src/` |
 | Theme | Kyndryl Bridge-style override layer | `src/theme-bridge.css` |
 | Backend API | FastAPI, Pydantic v2, pydantic-settings, SQLAlchemy 2, PyJWT, azure-identity, azure-ai-projects, openai | `backend/` |
 | Sandbox service | FastAPI and SQLAlchemy service on PostgreSQL 17, containerised with Podman | `payment_api/`, `compose.yaml`, `Containerfile` |
@@ -92,7 +92,7 @@ src/
   context.tsx         Session, workspace snapshot, polling, role switching
   lib/                API client and formatting helpers
   components/         Shell, forms, incident widgets, UI kit (incl. BrandMark)
-  components/war-room/  3D agent workforce (AgentWorkforce3D.tsx, war-room-3d.css)
+  components/war-room/  Agent command view (AgentCommandView.tsx, agent-command.css, war-room-3d.css)
   pages/              14 modules
 tests/                Playwright specs + global setup
 docs/                 architecture.md, agent-mapping.md, implementation-roadmap.md, upgrade-audit.md
@@ -177,7 +177,7 @@ You switch personas from the profile menu. A typical demo uses the Incident Mana
 |---|---|
 | Command centre (`/`) | Dashboard: KPIs, active incidents, health |
 | Issues & incidents | Incident list, detail, evidence, lifecycle actions |
-| AI War Room | 3D agent workforce, 2D list and XY Flow service graph |
+| AI War Room | Agent command view, 2D list and XY Flow service graph |
 | Root cause analysis | Hypotheses and investigations |
 | Agent orchestration | The specialist roles and their task status |
 | Project & repositories | Repository analyses |
@@ -234,27 +234,68 @@ This affects:
 
 ---
 
-## 9. Change details: AI War Room 3D workforce
+## 9. Change details: AI War Room agent command view
 
-Files: `src/components/war-room/AgentWorkforce3D.tsx` and `src/components/war-room/war-room-3d.css`.
+The War Room's workforce panel was redesigned from scratch, inspired by a reference video of a mission-control style AI dashboard. It was adapted to this project's purpose rather than copied: no third-party apps, names or icons, only incident-response concepts and real data from the backend.
 
-| Aspect | Before | After |
-|---|---|---|
-| Scene | Near-black background, glowing grid, floating particles, fog | Light background (`#f4f6f6`), soft circular floor with faint guide rings |
-| Orchestrator | Spiky metallic polyhedron with red rings | Teal hub on a white plinth, with a thin Kyndryl-red ring as the brand accent |
-| Specialists | Mixed polyhedra at different heights | 13 identical white "pucks" evenly spaced on one ring, each with a status-coloured band and a soft contact shadow |
-| Status colours | Red for running | Teal running, green completed, amber queued/waiting, red failed, grey idle |
-| Links | Many red and grey lines | Faint spokes from the hub; dependency lines turn teal, with a moving dot, only while an agent is running |
-| Labels | Dark monospace boxes that overlapped | White cards with a status-coloured left edge and status dot; back-of-ring labels staggered so they don't collide |
-| Evidence | Floating diamonds with always-on ID tags | Small markers beside each agent; ID chips appear only for the selected agent |
-| Selection | White glow | Teal ring on the floor, a slight lift, and the camera eases toward the agent |
-| Camera | Low side angle | Higher, more top-down angle; pulls back on narrow panels so the whole ring fits |
-| Toolbar | Dark | White, with a teal segmented control and standard selects and buttons |
-| Overlays | Dark floating boxes | Orchestrator status card at top-left; counts and snapshot note in a white footer strip |
-| 2D list | Dark cards | White cards with a status-coloured edge and status dot |
-| Narrow panels (≤ 640 px) | Overlapping labels | Name-only compact labels, and a two-row footer |
+**Files:**
+- `src/components/war-room/AgentCommandView.tsx` and `agent-command.css` are new.
+- `src/pages/WarRoom.tsx` wires in the new view.
+- `war-room-3d.css` gained the full-width layout rules.
+- The old three.js scene (`AgentWorkforce3D.tsx`) was removed, and the unused `three`, `@react-three/fiber` and `@react-three/drei` packages were uninstalled.
 
-The XY Flow service graph already matched the light theme and was left as is. All existing behaviour is unchanged: filters, labels toggle, focus, reset, fullscreen, the 2D fallback when WebGL is unavailable, and opening agent evidence.
+### Layout
+
+```
+   [items]  [ Investigate card ]  (Investigate)              (Diagnose)  [ Diagnose card ]  [items]
+                                          \                    /
+                                           [  ORCHESTRATOR  ]
+                                          /   (human approval) \
+   [items]  [ Govern card ]   (Govern & Release)       (Remediate & Validate)  [ Remediate card ]  [items]
+
+                          [ Search agents, evidence or gates… ]
+```
+
+- **Theme:** matches the rest of the site (Kyndryl Bridge style): a light dotted canvas with a soft teal glow, white cards with a coloured top edge, teal controls and a teal search focus. The Orchestrator keeps its Kyndryl red.
+- **Full width:** in Workforce mode the panel spans the full width of the page. Incident context and Findings/Agent inspector move below it. XY Flow mode keeps the original three-column layout.
+- **Orchestrator hub:** an extruded hexagon tile in Kyndryl red, in the centre. Its caption shows the real workflow state, for example `AWAITING INPUT`, `ORCHESTRATING · Investigation` or `WORKFLOW COMPLETED`.
+- **Four lifecycle squads,** read clockwise, each with its own colour and icon:
+
+| Squad | Colour | Specialists | Lifecycle stages |
+|---|---|---|---|
+| Investigate | Blue (`#1192e8`) | Intake, log analysis, observability, repository | Detection, Investigation |
+| Diagnose | Violet (`#8a3ffc`) | Knowledge retrieval, root-cause analysis | Root cause |
+| Remediate & Validate | Amber (`#d2a106`) | Remediation, testing, security, validation | Proposal, Validation |
+| Govern & Release | Green (`#24a148`) | Change risk, release coordination, incident summary | Approval, Deployment, Recovery, Closure |
+
+- **Squad dashboard cards:** each squad has a card listing its specialists with status dots, a progress bar, a completed count and a state tag (Upcoming, Active or Done) derived from the incident's current stage. Clicking a specialist opens it in the Agent inspector.
+- **Item fans:** the round icons on the outer edges come from real backend data:
+  - Investigate: linked **evidence records** (log, metric, trace…). Clicking one opens the evidence.
+  - Diagnose: **hypotheses**, with confidence.
+  - Remediate & Validate: the change's **quality gates** (passed or failed).
+  - Govern & Release: **human approval, deployment, recovery and closure** status.
+- **Human approval gate:** a badge on the line to Govern & Release. It shows **locked** (amber) until a separate human approves the change, then **open** (green). This reflects the project's human-governed objective.
+- **Connectors:** dotted curves from the hub to each squad, and from each card to its items. The line to the active squad animates while a workflow runs.
+- **Animations:**
+  - **Intro:** the hub appears, squads fly in from the edges with a slight spin and blur, each connector *draws itself*, cards slide in, progress bars grow, and item icons pop in one by one. **Replay intro** plays it again.
+  - **Data packets:** dots travel continuously from the hub to every squad, and from each item icon to its card. They move faster and larger toward the active squad, and slower and grey toward upcoming ones.
+  - **Hub:** a heartbeat pulse, expanding ripples (faster while a workflow runs), and a dashed orbit ring with a travelling dot.
+  - **Squads:** the hexagon tiles float gently out of step with each other. The active squad has a ripple ring, a glowing "Active" tag and a shimmering progress bar. The connector ports blink.
+  - **Live states:** status dots of running or waiting agents ping. Waiting items (such as a pending approval) pulse, and the locked approval gate gives an occasional lock wiggle.
+  - **Interaction:**
+    - cards lift on hover, and agent rows slide slightly;
+    - the selected squad glows and its connector thickens;
+    - toolbar icons spin on hover;
+    - the "<agent> details" button nudges downward.
+  - **Background:** a slow drifting glow across the canvas.
+  - **Reduced motion:** all motion is switched off when the user's system asks for it.
+- **Command bar:** "Search agents, evidence or gates…" dims everything that doesn't match, and Enter selects the first matching agent. This is a real search, not a fake chat; the footer says "Recorded task states only · no live agent execution".
+- **Other controls:**
+  - a status filter;
+  - a **2D list** view;
+  - **Fullscreen**;
+  - a "<agent> details" button that scrolls to the inspector.
+- **Narrow screens** (panel under 900 px wide, including tablets and phones): the canvas switches to a stacked layout, with the hub on top and each squad's tile next to its card and items as a row of icons.
 
 ---
 
@@ -326,7 +367,7 @@ npm run dev -- --host 127.0.0.1 --port 5173
 **What the browser tests cover:**
 - all 14 modules and the Kyndryl Bridge theme (white header, red wordmark)
 - the service graph
-- the War Room in 3D, with agent selection and evidence, and in the 2D fallback
+- the War Room command view: hub, four squads, 13 specialists, the human approval gate, agent selection with evidence, search and status filter, and the 2D list
 - incident intake with redacted evidence upload
 - the Payment API sandbox proposal
 - the full checkout workflow, including separate-person approval
@@ -347,7 +388,7 @@ The Python tests ran against an in-memory database, so the demo data in `data/ag
 | 0 Repository audit | PASS | Audit, architecture and mapping docs |
 | 1A Payment API sandbox | WARN | Code complete; runtime acceptance NOT RUN |
 | 1B Agents, evidence, events, security | NOT RUN | Planner that picks agents from the incident inputs, real read-only tools, durable events, approval bound to the exact action |
-| 2 3D workforce and replay | WARN | 3D workforce UI exists and is now restyled; full acceptance depends on 1B |
+| 2 Workforce view and replay | WARN | The agent command view replaces the 3D scene; full acceptance (dynamic selection, replay) depends on 1B |
 | 3 Golden scenario | NOT RUN | Full end-to-end Payment API recovery |
 | 4 Business value and benchmark | NOT RUN | Human baseline vs BEHAVE |
 | Enterprise expansion | NOT STARTED | Tenant isolation, migrations, object storage |
