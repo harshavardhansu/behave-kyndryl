@@ -200,7 +200,7 @@ These are logical roles, not 14 model deployments. They currently have static me
 The UI was restyled to match the Kyndryl Bridge developer console. Most of it lives in one override file, [src/theme-bridge.css](src/theme-bridge.css), which loads after `styles.css`. It changes colours, fonts and surfaces and leaves the existing layout rules alone. The exception is the main content padding, which it now sets through shared variables so the banner can stretch edge to edge.
 
 - **Header:** white with a thin border, instead of the old solid red bar. The hamburger menu is always visible, and the right side holds dark grey icons.
-- **Logo:** a new `BrandMark` component in `src/components/ui.tsx` shows a lowercase wordmark: **kyndryl** in red (`#ff462d`) followed by **behave** in grey, with a "Command Centre" label after a divider. It's used in the header and on the sign-in, loading and error screens. The browser tab title and footer still say "BEHAVE KYNDRYL".
+- **Logo:** a new `BrandMark` component in `src/components/ui.tsx` shows a lowercase wordmark: **behave** in grey followed by **kyndryl** in red (`#ff462d`), with a "Command Centre" label after a divider. It's used in the header and on the sign-in, loading and error screens. The browser tab title and footer still say "BEHAVE KYNDRYL".
 - **Accent colour:** teal (`#29707a`) for primary buttons, the active sidebar item, active tabs, focus rings, links and progress bars. Red is kept only for the wordmark and for critical or error states.
 - **Page headers:** each page's title area is now a full-width dark teal gradient banner with a dotted texture, light-weight white heading and white or teal buttons.
 - **Surfaces:** light grey page background (`#f8f8f8`), white cards with a `#e3e3e3` border and 4 px corners, and grey tabs with a teal underline.
@@ -220,7 +220,7 @@ The UI was restyled to match the Kyndryl Bridge developer console. Most of it li
   - **Evidence:** small markers beside each agent. Their ID chips appear only for the selected agent, to reduce clutter.
   - **Camera:** a higher, more top-down default angle. It pulls back on narrower panels so the whole ring fits.
   - **Toolbar and surroundings:** a white toolbar with a teal segmented control and standard selects. The orchestrator badge sits top-left, the counts and snapshot note in a footer strip, and the 2D list uses matching white cards.
-- **Tests:** the browser tests now check for the white header, the red "kyndryl" wordmark and the `kyndryl behave` logo text instead of the old red header. The 3D pixel check now measures against the new light stage background.
+- **Tests:** the browser tests now check for the white header, the red "kyndryl" wordmark and the `behave kyndryl` logo text instead of the old red header. The 3D pixel check now measures against the new light stage background.
 - **Backup:** the pre-theme `src/`, `tests/`, `index.html`, `package.json` and `package-lock.json` were backed up before the theme change.
 
 To undo the theme, remove the `theme-bridge.css` and Roboto imports from `src/main.tsx`, restore the Manrope imports, and put back the old brand markup.

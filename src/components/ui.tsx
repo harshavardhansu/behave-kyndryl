@@ -154,12 +154,12 @@ export function PageHeader({
   )
 }
 
-/** Kyndryl Bridge-style wordmark: red "kyndryl" followed by the product name. */
+/** Kyndryl Bridge-style wordmark: the product name followed by red "kyndryl". */
 export function BrandMark() {
   return (
     <span className="brand-mark">
-      <span className="brand-kyndryl">kyndryl</span>{' '}
-      <span className="brand-product">behave</span>
+      <span className="brand-product">behave</span>{' '}
+      <span className="brand-kyndryl">kyndryl</span>
     </span>
   )
 }

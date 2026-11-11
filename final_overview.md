@@ -30,7 +30,7 @@ All UI and API labels use a fixed set of truthfulness terms: `REAL`, `MEASURED`,
 | Area | What changed |
 |---|---|
 | **Visual theme** | The whole UI was restyled to match the Kyndryl Bridge developer console: white header, teal accent, dark-teal page banners, light grey page background, white cards and the Roboto font. |
-| **Logo** | "BEHAVE KYNDRYL" text replaced by a Bridge-style lowercase wordmark: **kyndryl** in red and **behave** in grey, followed by a "Command Centre" label after a divider. |
+| **Logo** | "BEHAVE KYNDRYL" text replaced by a Bridge-style lowercase wordmark, **behave kyndryl**: **behave** in grey and **kyndryl** in red, followed by a "Command Centre" label after a divider. |
 | **Search fields** | Fixed a double border: a second box was drawn inside every search field. |
 | **AI War Room (3D)** | The dark sci-fi scene was rebuilt as a clean, light, professional view that matches the theme. |
 | **Tests** | Browser tests updated for the new header, wordmark and War Room background. All suites pass. |
@@ -199,7 +199,7 @@ Most of the restyle lives in one override file, **`src/theme-bridge.css`**, whic
 | Element | New look |
 |---|---|
 | Header | White with a thin bottom border and soft shadow; always-visible hamburger menu; dark grey icons; red notification badge |
-| Logo | `BrandMark` component in `src/components/ui.tsx`: **kyndryl** in red (`#ff462d`) followed by **behave** in grey, then a divider and "Command Centre" |
+| Logo | `BrandMark` component in `src/components/ui.tsx`: **behave** in grey followed by **kyndryl** in red (`#ff462d`), then a divider and "Command Centre" |
 | Accent colour | Teal `#29707a` for primary buttons, the active sidebar item, active tabs, links, focus rings and progress bars |
 | Red | Kept only for the wordmark and for critical or error states |
 | Page headers | Full-width dark-teal gradient banner with a dotted texture, light-weight white title, and white or teal buttons |
