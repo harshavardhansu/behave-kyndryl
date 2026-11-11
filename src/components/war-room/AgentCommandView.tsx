@@ -40,7 +40,7 @@ import './agent-command.css'
 
 type SquadId = 'investigate' | 'diagnose' | 'remediate' | 'govern'
 type Corner = 'tl' | 'tr' | 'br' | 'bl'
-type SquadState = 'upcoming' | 'active' | 'done'
+type SquadState = 'upcoming' | 'active' | 'done' | 'skipped'
 
 interface SquadDefinition {
     id: SquadId
@@ -74,6 +74,12 @@ const STATUS_OPTIONS: AgentStatus[] = [
     'Cancelled',
     'Paused',
 ]
+
+const SHORT_STATUS: Partial<Record<AgentStatus, string>> = {
+    'Waiting for Human Approval': 'Awaiting approval',
+    'Waiting for Evidence': 'Awaiting evidence',
+    Cancelled: 'Not reached',
+}
 
 function statusColor(status: AgentStatus) {
     if (status === 'Running') return '#29707A'
@@ -181,7 +187,22 @@ function buildFans({
     return { investigate, diagnose, remediate, govern }
 }
 
-function squadState(squad: SquadDefinition, stage: number, members: Agent[]): SquadState {
+/** Mission view: what the command view needs to show an orchestrated team. */
+export interface MissionView {
+    caption: string
+    running: boolean
+    skipped: { role: string; name: string; reason: string }[]
+    fixApproved: boolean
+    hasMission: boolean
+}
+
+function squadState(squad: SquadDefinition, stage: number, members: Agent[], mission?: MissionView): SquadState {
+    if (mission) {
+        if (!members.length) return mission.hasMission ? 'skipped' : 'upcoming'
+        if (members.some((agent) => agent.status === 'Running')) return 'active'
+        if (members.every((agent) => agent.status === 'Completed')) return 'done'
+        return 'upcoming'
+    }
     if (members.some((agent) => agent.status === 'Running')) return 'active'
     if (stage > squad.stages[squad.stages.length - 1]) return 'done'
     if (squad.stages.includes(stage)) return 'active'
@@ -320,19 +341,23 @@ function FanNode({ item, color, style, onSelectEvidence, matched }: { item: FanI
 function SquadCard({
     squad,
     members,
+    skipped = [],
     state,
     selectedId,
     isMatch,
     onSelect,
     footer,
+    emptyText,
 }: {
     squad: SquadDefinition
     members: Agent[]
+    skipped?: { role: string; name: string; reason: string }[]
     state: SquadState
     selectedId: string | null
     isMatch: (agent: Agent) => boolean
     onSelect: (agent: Agent) => void
     footer?: ReactNode
+    emptyText?: string
 }) {
     const completed = members.filter((agent) => agent.status === 'Completed').length
     const progress = members.length ? Math.round((completed / members.length) * 100) : 0
@@ -340,7 +365,7 @@ function SquadCard({
         <div className={`cmd-card is-${state}`} style={{ '--squad-color': squad.color } as CSSProperties}>
             <div className="cmd-card-head">
                 <strong>{squad.name}</strong>
-                <span className={`cmd-state is-${state}`}>{state === 'done' ? 'Done' : state === 'active' ? 'Active' : 'Upcoming'}</span>
+                <span className={`cmd-state is-${state}`}>{state === 'done' ? 'Done' : state === 'active' ? 'Active' : state === 'skipped' ? 'Not needed' : 'Upcoming'}</span>
             </div>
             <small className="cmd-card-caption">{squad.caption}</small>
             <ul className="cmd-members">
@@ -355,10 +380,20 @@ function SquadCard({
                         >
                             <span className="cmd-member-dot" />
                             <span className="cmd-member-name">{agent.name}</span>
-                            <span className="cmd-member-status">{agent.status}</span>
+                            <span className="cmd-member-status">{SHORT_STATUS[agent.status] ?? agent.status}</span>
                         </button>
                     </li>
                 ))}
+                {skipped.map((item) => (
+                    <li key={item.role}>
+                        <span className="cmd-member is-skipped" title={item.reason}>
+                            <span className="cmd-member-dot" />
+                            <span className="cmd-member-name">{item.name}</span>
+                            <span className="cmd-member-status">{item.reason.startsWith('Held back') ? 'Held back' : item.reason.startsWith('Removed') ? 'Removed' : 'Not needed'}</span>
+                        </span>
+                    </li>
+                ))}
+                {!members.length && !skipped.length && emptyText && <li className="cmd-member-empty">{emptyText}</li>}
             </ul>
             <div className="cmd-progress" aria-label={`${completed} of ${members.length} tasks completed`}>
                 <span style={{ width: `${progress}%` }} />
@@ -411,7 +446,9 @@ export function AgentCommandView({
     onSelect,
     onSelectEvidence,
     onShowDetails,
+    mission,
 }: {
+    mission?: MissionView
     incident: Incident
     agents: Agent[]
     evidence: Evidence[]
@@ -477,7 +514,12 @@ export function AgentCommandView({
         (!normalizedQuery || agent.name.toLowerCase().includes(normalizedQuery) || agent.role.toLowerCase().includes(normalizedQuery))
     const fanMatches = (item: FanItem) => !normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.detail.toLowerCase().includes(normalizedQuery)
 
-    const approvalLocked = approval?.status !== 'Approved'
+    const approvalLocked = mission ? !mission.fixApproved : approval?.status !== 'Approved'
+    const caption = mission ? mission.caption : hubCaption(incident)
+    const hubRunning = mission ? mission.running : incident.workflowStatus === 'Running'
+    const skippedBySquad = (squad: SquadDefinition) => (mission?.skipped ?? []).filter((item) => squad.roles.includes(item.role))
+    const stateOf = (squad: SquadDefinition) => squadState(squad, currentStage, membersBySquad[squad.id], mission)
+    const emptyText = mission && !mission.hasMission ? 'No team yet. Start an agent mission.' : undefined
     const runningCount = agents.filter((agent) => agent.status === 'Running').length
     const completedCount = agents.filter((agent) => agent.status === 'Completed').length
     const failedCount = agents.filter((agent) => agent.status === 'Failed').length
@@ -508,9 +550,9 @@ export function AgentCommandView({
     const hubNode = orchestrator && (
         <button
             type="button"
-            className={`cmd-hub ${selectedId === orchestrator.id ? 'is-selected' : ''} ${incident.workflowStatus === 'Running' ? 'is-running' : ''}`}
+            className={`cmd-hub ${selectedId === orchestrator.id ? 'is-selected' : ''} ${hubRunning ? 'is-running' : ''}`}
             onClick={() => onSelect(orchestrator)}
-            aria-label={`Orchestrator: ${orchestrator.status}. ${hubCaption(incident)}`}
+            aria-label={`Orchestrator: ${orchestrator.status}. ${caption}`}
         >
             <span className="cmd-hub-visual">
                 <span className="cmd-hub-ripple" />
@@ -520,7 +562,7 @@ export function AgentCommandView({
             </span>
             <span className="workforce-core-label">
                 <span>ORCHESTRATOR</span>
-                <strong>{hubCaption(incident)}</strong>
+                <strong>{caption}</strong>
             </span>
         </button>
     )
@@ -535,7 +577,7 @@ export function AgentCommandView({
                 <span className="cmd-port left" />
                 <HexBadge color={squad.color} icon={squad.icon} size={sizePx} dim={!anyMatch} />
                 <span className="cmd-port right" />
-                <span className="cmd-squad-pill">{squad.name}<b>{done}/{members.length}</b></span>
+                <span className="cmd-squad-pill">{squad.name}<b>{state === 'skipped' ? '—' : `${done}/${members.length}`}</b></span>
             </div>
         )
     }
@@ -569,18 +611,19 @@ export function AgentCommandView({
                             <svg className="cmd-links" width={size.width} height={size.height} aria-hidden="true">
                                 {SQUADS.map((squad) => {
                                     const layout = geometry.layouts[squad.id]
-                                    const state = squadState(squad, currentStage, membersBySquad[squad.id])
-                                    const flowing = state === 'active' || (squad.id !== 'govern' && incident.workflowStatus === 'Running' && state !== 'done')
+                                    const state = stateOf(squad)
+                                    const flowing = state === 'active' || (!mission && squad.id !== 'govern' && incident.workflowStatus === 'Running' && state !== 'done')
                                     const selectedHere = membersBySquad[squad.id].some((agent) => agent.id === selectedId)
                                     const order = SQUADS.indexOf(squad)
                                     const packetDuration = flowing ? 1.8 : state === 'done' ? 3.6 : 5.2
+                                    const showPackets = !reducedMotion && state !== 'skipped'
                                     return (
                                         <g key={squad.id} className={`cmd-link-group is-${state} ${selectedHere ? 'is-selected' : ''}`} style={{ '--squad-color': squad.color, '--delay': `${0.9 + order * 0.12}s` } as CSSProperties}>
                                             <path className="cmd-link-draw" d={layout.hubPath} pathLength={1} />
                                             <path className={`cmd-link hub ${flowing ? 'is-flowing' : ''}`} d={layout.hubPath} />
                                             <path className="cmd-link card" d={layout.cardPath} />
                                             {layout.fanPaths.map((path, index) => <path key={index} className="cmd-link fan" d={path} />)}
-                                            {!reducedMotion && (
+                                            {showPackets && (
                                                 <g className="cmd-packets">
                                                     {[0, 1, 2].map((packet) => (
                                                         <circle key={packet} className={`cmd-packet ${flowing ? 'is-fast' : ''}`} r={flowing ? 3.6 : 2.6}>
@@ -601,7 +644,7 @@ export function AgentCommandView({
 
                             {SQUADS.map((squad, index) => {
                                 const layout = geometry.layouts[squad.id]
-                                const state = squadState(squad, currentStage, membersBySquad[squad.id])
+                                const state = stateOf(squad)
                                 const fromX = layout.side * 160
                                 const fromY = layout.hex.y < geometry.hub.y ? -120 : 120
                                 return (
@@ -610,7 +653,7 @@ export function AgentCommandView({
                                             {squadNode(squad, state, 68)}
                                         </div>
                                         <div className="cmd-card-slot" style={{ left: layout.card.left, top: layout.card.top, width: layout.card.width, '--delay': `${1.15 + index * 0.1}s` } as CSSProperties}>
-                                            <SquadCard squad={squad} members={membersBySquad[squad.id]} state={state} selectedId={selectedId} isMatch={isMatch} onSelect={onSelect} />
+                                            <SquadCard squad={squad} members={membersBySquad[squad.id]} skipped={skippedBySquad(squad)} emptyText={emptyText} state={state} selectedId={selectedId} isMatch={isMatch} onSelect={onSelect} />
                                         </div>
                                         {fans[squad.id].map((item, fanIndex) => (
                                             <FanNode
@@ -648,13 +691,15 @@ export function AgentCommandView({
                         <div className="cmd-compact">
                             {hubNode && <div className="cmd-compact-hub">{hubNode}</div>}
                             {SQUADS.map((squad, index) => {
-                                const state = squadState(squad, currentStage, membersBySquad[squad.id])
+                                const state = stateOf(squad)
                                 return (
                                     <div key={squad.id} className={`cmd-compact-row is-${state}`} style={{ '--squad-color': squad.color, '--delay': `${0.2 + index * 0.1}s` } as CSSProperties}>
                                         {squadNode(squad, state, 52)}
                                         <SquadCard
                                             squad={squad}
                                             members={membersBySquad[squad.id]}
+                                            skipped={skippedBySquad(squad)}
+                                            emptyText={emptyText}
                                             state={state}
                                             selectedId={selectedId}
                                             isMatch={isMatch}

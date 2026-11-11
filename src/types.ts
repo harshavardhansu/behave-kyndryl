@@ -293,6 +293,7 @@ export interface Integration {
   status: 'Demo source' | 'Not configured' | 'Configured, not verified'
   description: string
   required: string[]
+  authentication?: string
 }
 
 export interface Policy {
@@ -346,6 +347,11 @@ export interface Snapshot {
   security: SecurityFinding[]
   changes: Change[]
   approvals: Approval[]
+  missions: Mission[]
+  aiMode?: string
+  paymentSandbox?: PaymentSandboxStatus
+  sandboxMeasurements?: SandboxMeasurement[]
+  aiUsage?: AIUsage
   logs: LogRecord[]
   knowledge: KnowledgeRecord[]
   audit: AuditEvent[]
@@ -360,6 +366,144 @@ export interface Snapshot {
     other: number
     resolved: number
   }[]
+}
+
+export type MissionStatus =
+  | 'Analysing'
+  | 'Awaiting team approval'
+  | 'Working'
+  | 'Awaiting decision'
+  | 'Awaiting resolution review'
+  | 'Resolved'
+  | 'Escalated'
+  | 'Cancelled'
+  | 'Paused'
+
+export interface MissionFindings {
+  summary: string
+  evidenceIds: string[]
+  confidence: number
+  source?: string
+}
+
+export interface SandboxMeasurement {
+  id: string
+  incidentId: string | null
+  purpose: string
+  recordedBy: string
+  measuredAt: string
+  release: string
+  poolSize: number
+  concurrency: number
+  requests: number
+  succeeded: number
+  errors: number
+  notFound: number
+  errorRate: number
+  p95Ms: number
+  maxMs: number
+  featureX: boolean
+}
+
+export interface PaymentSandboxStatus {
+  mode: 'local' | 'container'
+  running: boolean
+  url?: string
+  activeConfig?: { service: string; release: string; pool_size: number; max_overflow: number; pool_timeout: number; hold_seconds: number } | null
+  featureX?: boolean
+}
+
+export interface AIUsage {
+  date: string
+  calls: number
+  limit: number
+  inputTokens: number
+  outputTokens: number
+  cacheHits: number
+  model: string
+  totals: { calls: number; inputTokens: number; outputTokens: number; cacheHits: number }
+}
+
+export interface MissionMember {
+  id: string
+  role: string
+  name: string
+  purpose: string
+  reason: string
+  task: string
+  step: string
+  status: AgentStatus | 'Not reached'
+  findings: MissionFindings | null
+  startedAt: string | null
+  completedAt: string | null
+  addedBy: string | null
+}
+
+export interface MissionPlanItem {
+  role: string
+  reason: string
+  task?: string
+}
+
+export interface MissionGate {
+  id: string
+  type: 'team' | 'root-cause' | 'fix' | 'resolution'
+  title: string
+  detail: string
+  recommendation: string
+  requires: string
+  createdAt: string
+  iteration: number
+}
+
+export interface MissionDecision {
+  gateId: string
+  type: MissionGate['type']
+  decision: string
+  by: string
+  byId: string
+  note: string
+  at: string
+}
+
+export interface MissionIteration {
+  number: number
+  plan: { analysis: string; selected: MissionPlanItem[]; skipped: MissionPlanItem[]; source?: string } | null
+  team: MissionMember[]
+  skipped: MissionPlanItem[]
+  decisions: MissionDecision[]
+  outcome: { resolved: boolean; detail: string; recommendation: string; missing?: string[]; source?: string } | null
+  learnings: string[]
+  startedAt: string
+  completedAt: string | null
+}
+
+export interface MissionEvent {
+  id: string
+  timestamp: string
+  iteration: number
+  type: string
+  actor: string
+  role: string | null
+  message: string
+}
+
+export interface Mission {
+  id: string
+  incidentId: string
+  status: MissionStatus
+  mode: string
+  iteration: number
+  maxIterations: number
+  requestedBy: string
+  requestedById: string
+  createdAt: string
+  updatedAt: string
+  pendingGate: MissionGate | null
+  iterations: MissionIteration[]
+  events: MissionEvent[]
+  learnings: string[]
+  resolution: { by: string; at: string; note: string; iteration: number } | null
 }
 
 export interface Session {

@@ -1,9 +1,10 @@
+import sqlite3
 from copy import deepcopy
 from pathlib import Path
 from threading import RLock
 from typing import Callable, TypeVar
 
-from sqlalchemy import JSON, String, create_engine, select
+from sqlalchemy import JSON, String, create_engine, delete, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 from sqlalchemy.pool import StaticPool
@@ -38,7 +39,7 @@ class AuthSession(Base):
     body: Mapped[dict] = mapped_column(JSON)
 
 
-COLLECTIONS = ("incidents", "services", "dependencies", "evidence", "hypotheses", "agents", "tests", "security", "changes", "approvals", "logs", "knowledge", "deployments", "integrations")
+COLLECTIONS = ("incidents", "services", "dependencies", "evidence", "hypotheses", "agents", "tests", "security", "changes", "approvals", "logs", "knowledge", "deployments", "integrations", "missions")
 Result = TypeVar("Result")
 
 
@@ -77,7 +78,7 @@ class Store:
         meta = {key: value for key, value in state.items() if key not in COLLECTIONS and key != "audit"}
         session.merge(Workspace(identifier="main", body=deepcopy(meta)))
         for collection in COLLECTIONS:
-            for body in state[collection]:
+            for body in state.get(collection, []):
                 existing = session.get(Entity, (collection, body["id"]))
                 if existing is None:
                     session.add(Entity(collection=collection, identifier=body["id"], body=deepcopy(body)))
@@ -86,6 +87,32 @@ class Store:
         for event in state["audit"]:
             if session.get(AuditRecord, event["id"]) is None:
                 session.add(AuditRecord(identifier=event["id"], body=deepcopy(event)))
+
+    def reset(self, state: dict) -> None:
+        """Replace all workspace data with ``state``. Sign-in sessions are kept."""
+        with self.lock, Session(self.engine) as session, session.begin():
+            session.execute(delete(Entity))
+            session.execute(delete(AuditRecord))
+            session.execute(delete(Workspace))
+            session.flush()
+            self._write(session, state)
+
+    def backup(self, destination: Path) -> Path | None:
+        """Copy a SQLite database to ``destination`` (online backup). Returns None for other databases."""
+        if self.engine.dialect.name != "sqlite" or self.engine.url.database in (None, "", ":memory:"):
+            return None
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with self.lock:
+            raw = self.engine.raw_connection()
+            try:
+                target = sqlite3.connect(destination)
+                try:
+                    raw.driver_connection.backup(target)
+                finally:
+                    target.close()
+            finally:
+                raw.close()
+        return destination
 
     def read(self) -> dict:
         with self.lock, Session(self.engine) as session:

@@ -45,7 +45,11 @@ import {
   X,
 } from 'lucide-react'
 import { useIncident, useWorkspace } from '../context'
-import type { Dependency, Service } from '../types'
+import type { Agent, AgentStatus, Dependency, Service } from '../types'
+import type { MissionView } from '../components/war-room/AgentCommandView'
+import { MissionPanel } from '../components/war-room/MissionPanel'
+import { PaymentSandboxPanel } from '../components/war-room/PaymentSandboxPanel'
+import { latestMission, ROLE_NAMES } from '../lib/missions'
 import { dateTime, elapsed, number, sla, time } from '../lib/format'
 import '../components/war-room/war-room-3d.css'
 import {
@@ -77,6 +81,9 @@ const AgentCommandView = lazy(() =>
     default: module.AgentCommandView,
   }))
 )
+
+/** The dependency map shows production topology; the isolated sandbox service is not part of it. */
+const topologyServices = (services: Service[]) => services.filter((service) => service.environment !== 'Sandbox')
 
 const serviceIcons = {
   Web: AppWindow,
@@ -143,7 +150,7 @@ function Topology({
   const incident = useIncident()
   const flow = useReactFlow<ServiceNode>()
   const [nodes, setNodes, onNodesChange] = useNodesState<ServiceNode>(
-    data.services.map((service) => ({
+    topologyServices(data.services).map((service) => ({
       id: service.id,
       type: 'service',
       position: service.position,
@@ -160,7 +167,7 @@ function Topology({
   const [externals, setExternals] = useState(true)
   useEffect(() => {
     setNodes((previous) =>
-      data.services.map((service) => ({
+      topologyServices(data.services).map((service) => ({
         id: service.id,
         type: 'service',
         position:
@@ -219,7 +226,7 @@ function Topology({
 
   function reset() {
     setNodes(
-      data.services.map((service) => ({
+      topologyServices(data.services).map((service) => ({
         id: service.id,
         type: 'service',
         position: service.position,
@@ -602,15 +609,82 @@ function WarRoomWorkspace() {
     (edge) => edge.id === dependencyId
   )
   const incidentAgents = data.agents.filter((agent) => agent.incidentId === incident.id)
-  const selectedAgent = incidentAgents.find((agent) => agent.id === selectedAgentId)
+  const mission = latestMission(data.missions, incident.id)
+  const missionIteration = mission?.iterations[mission.iterations.length - 1]
+  const missionCaption = !mission
+    ? 'Awaiting ticket analysis'
+    : {
+      Analysing: `Analysing ticket · iteration ${mission.iteration}`,
+      'Awaiting team approval': 'Team proposed · awaiting approval',
+      Working: `Team at work · iteration ${mission.iteration}`,
+      'Awaiting decision': 'Awaiting human decision',
+      'Awaiting resolution review': 'Outcome ready for review',
+      Resolved: `Resolved · iteration ${mission.iteration}`,
+      Escalated: 'Escalated to a human',
+      Cancelled: 'Mission cancelled',
+      Paused: 'Mission paused',
+    }[mission.status]
+  const orchestratorStatus: AgentStatus = !mission
+    ? 'Idle'
+    : mission.status === 'Analysing' || mission.status === 'Working'
+      ? 'Running'
+      : mission.status.startsWith('Awaiting')
+        ? 'Waiting for Human Approval'
+        : mission.status === 'Resolved'
+          ? 'Completed'
+          : mission.status === 'Escalated'
+            ? 'Failed'
+            : mission.status === 'Cancelled'
+              ? 'Cancelled'
+              : 'Paused'
+  const missionLimitations = mission
+    ? `${mission.mode}. Findings come from the mission planner, not live tools; humans approve every important step.`
+    : 'No mission yet. Start an agent mission to have the Orchestrator form a team.'
+  const proposedTeam = missionIteration && !missionIteration.team.length && missionIteration.plan ? missionIteration.plan.selected : []
+  const missionAgents: Agent[] = [
+    {
+      id: `${mission?.id ?? incident.id}-orchestrator`, role: 'orchestrator', name: 'Orchestrator',
+      purpose: 'Analyses the ticket, forms the team, coordinates hand-offs and asks humans for every important decision.',
+      status: orchestratorStatus, task: missionIteration?.plan?.analysis ?? missionCaption, incidentId: incident.id,
+      startedAt: mission?.createdAt ?? null, lastActivity: mission?.updatedAt ?? null, dependencies: [], inputs: [], outputs: [],
+      retries: 0, usage: null, approvalRequired: true, phase: -1, limitations: missionLimitations,
+    },
+    ...(missionIteration?.team ?? []).map((member): Agent => ({
+      id: member.id, role: member.role, name: member.name, purpose: `Chosen because: ${member.reason}`,
+      status: member.status === 'Not reached' ? 'Cancelled' : member.status, task: member.findings?.summary ?? member.task,
+      incidentId: incident.id, startedAt: member.startedAt, lastActivity: member.completedAt ?? member.startedAt,
+      dependencies: [], inputs: member.findings?.evidenceIds ?? [], outputs: [], retries: 0, usage: null,
+      approvalRequired: member.role === 'remediation' || member.role === 'root-cause', phase: 0,
+      limitations: member.findings?.source ? `${member.findings.source}. Humans approve every important step.` : missionLimitations,
+    })),
+    ...proposedTeam.map((item): Agent => ({
+      id: `${mission?.id}-proposed-${item.role}`, role: item.role, name: ROLE_NAMES[item.role] ?? item.role,
+      purpose: `Proposed because: ${item.reason}`, status: 'Waiting for Human Approval', task: 'Proposed by the Orchestrator; waiting for team approval',
+      incidentId: incident.id, startedAt: null, lastActivity: null, dependencies: [], inputs: [], outputs: [], retries: 0,
+      usage: null, approvalRequired: true, phase: 0, limitations: missionLimitations,
+    })),
+  ]
+  const missionView: MissionView = {
+    caption: missionCaption,
+    running: mission?.status === 'Analysing' || mission?.status === 'Working',
+    skipped: (missionIteration?.team.length ? missionIteration.skipped : missionIteration?.plan?.skipped ?? []).map((item) => ({
+      role: item.role, name: ROLE_NAMES[item.role] ?? item.role, reason: item.reason,
+    })),
+    fixApproved: Boolean(missionIteration?.decisions.some((decision) => decision.type === 'fix' && decision.decision === 'approve')),
+    hasMission: Boolean(missionIteration?.team.length || proposedTeam.length),
+  }
+  const selectedAgent = missionAgents.find((agent) => agent.id === selectedAgentId)
   const activeApproval = data.approvals
     .filter((approval) => approval.incidentId === incident.id)
     .sort((left, right) => right.requestedAt.localeCompare(left.requestedAt))[0]
   const foundry = data.integrations.find((integration) => integration.id === 'foundry')
-  const agentExecutionLabel = data.mode === 'demo' ? 'SIMULATED' : 'NOT CONFIGURED'
-  const providerLabel = foundry?.status === 'Not configured'
-    ? 'NOT CONFIGURED'
-    : 'NOT CONFIGURED / connection not verified'
+  const aiActive = (mission?.mode ?? data.aiMode ?? '').startsWith('AI-GENERATED')
+  const agentExecutionLabel = aiActive ? 'AI-GENERATED' : data.mode === 'demo' ? 'SIMULATED' : 'NOT CONFIGURED'
+  const providerLabel = data.aiMode?.startsWith('AI-GENERATED')
+    ? `${data.aiMode.split(' / ')[1] ?? 'Azure OpenAI'}${foundry?.authentication ? ` (${foundry.authentication})` : ''}`
+    : foundry?.status === 'Not configured'
+      ? 'NOT CONFIGURED'
+      : 'NOT CONFIGURED / connection not verified'
   const firstTaskStart = incidentAgents
     .map((agent) => agent.startedAt)
     .filter((value): value is string => Boolean(value))
@@ -833,8 +907,10 @@ function WarRoomWorkspace() {
               </h3>
               <span>
                 {visualization === 'workforce'
-                  ? `${incidentAgents.length} recorded task records / one selected incident`
-                  : `${data.services.length} services / ${data.dependencies.length} relationships`}
+                  ? mission
+                    ? `${missionAgents.length - 1} of 13 specialists in ${mission.id} / iteration ${mission.iteration}`
+                    : 'The Orchestrator forms a team per ticket'
+                  : `${topologyServices(data.services).length} services / ${data.dependencies.length} relationships`}
               </span>
             </div>
             <div className="war-view-switch" role="group" aria-label="War Room visualization">
@@ -852,13 +928,16 @@ function WarRoomWorkspace() {
             <>
               <div className="workforce-truth-row">
                 <Badge tone="outline" dot={false}>{agentExecutionLabel}</Badge>
-                <span>Workflow {incident.workflowStatus}</span>
-                <span>{incidentAgents.length} persisted agent tasks</span>
+                <span>{mission ? `Mission ${mission.status}` : 'No mission yet'}</span>
+                <span>{mission ? `${missionAgents.length - 1} of 13 specialists` : 'Team formed per ticket'}</span>
               </div>
+              {incident.service === 'payment-api' && incident.environment === 'Sandbox' && <PaymentSandboxPanel incident={incident} />}
+              <MissionPanel incident={incident} mission={mission} />
               <Suspense fallback={<div className="workforce-loading">Loading the agent command view…</div>}>
                 <AgentCommandView
                   incident={incident}
-                  agents={incidentAgents}
+                  agents={missionAgents}
+                  mission={missionView}
                   evidence={incidentEvidence}
                   hypotheses={data.hypotheses.filter((hypothesis) => hypothesis.incidentId === incident.id)}
                   change={change}
@@ -872,7 +951,11 @@ function WarRoomWorkspace() {
                   onShowDetails={() => inspectorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 />
               </Suspense>
-              <p className="workforce-integrity-note">The backend does not expose planner selection/skip decisions or communication events; this view shows recorded task states, declared dependencies, and linked evidence only.</p>
+              <p className="workforce-integrity-note">
+                {(mission?.mode ?? data.aiMode ?? '').startsWith('AI-GENERATED')
+                  ? `Team selection, skip reasons, findings and outcomes are AI-generated by ${(mission?.mode ?? data.aiMode ?? '').split(' / ')[1] ?? 'Azure OpenAI'} under daily cost limits, then checked against the real specialist roles and evidence IDs. Agents only read the ticket and its evidence: no tools run and nothing is deployed. Humans approve the team, the root cause, the fix and the outcome.`
+                  : 'Team selection, skip reasons, findings and outcomes come from the free SIMULATED rule-based planner; no AI model or tool runs. Humans approve the team, the root cause, the fix and the outcome.'}
+              </p>
             </>
           ) : (
             <ReactFlowProvider>
@@ -952,17 +1035,17 @@ function WarRoomWorkspace() {
                 <h4>Declared task dependencies</h4>
                 <div className="workforce-agent-dependencies">
                   {selectedAgent.dependencies.map((id) => {
-                    const dependency = incidentAgents.find((agent) => agent.id === id)
+                    const dependency = missionAgents.find((agent) => agent.id === id)
                     return dependency ? (
                       <button key={id} onClick={() => setSelectedAgentId(id)}>{dependency.name}<Badge>{dependency.status}</Badge></button>
                     ) : null
                   })}
-                  {!selectedAgent.dependencies.some((id) => incidentAgents.some((agent) => agent.id === id)) && <span className="muted">No recorded upstream task dependency.</span>}
+                  {!selectedAgent.dependencies.some((id) => missionAgents.some((agent) => agent.id === id)) && <span className="muted">Hand-offs follow the mission steps: Investigate, Diagnose, Remediate & validate, Govern & release.</span>}
                 </div>
                 <h4>Linked evidence</h4>
                 <EvidenceLinks ids={selectedAgentEvidenceIds} />
                 <Notice title="Execution boundary">{selectedAgent.limitations}</Notice>
-                <Link className="text-link" to={`/agents?task=${selectedAgent.id}`}>Open task record <ArrowUpRight size={12} /></Link>
+                {incidentAgents.some((agent) => agent.id === selectedAgent.id) && <Link className="text-link" to={`/agents?task=${selectedAgent.id}`}>Open task record <ArrowUpRight size={12} /></Link>}
               </div>
             )}
             {inspector === 'Service' && selectedService && (

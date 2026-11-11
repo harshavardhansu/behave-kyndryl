@@ -1,3 +1,4 @@
+from .seed_stories import add_story_data
 from datetime import datetime, timedelta, timezone
 
 from .domain import PolicyInput
@@ -216,4 +217,5 @@ def seed_workspace(demo: bool = True) -> dict:
         state["audit"].append({"id": f"AUD-{1000 + index}", "timestamp": stamp(age), "actor": actor, "role": "Demo fixture", "action": action, "resource": resource, "previous": previous, "next": next_state, "outcome": "Recorded", "correlationId": "INC-1039" if resource == "CHG-2081" else "INC-1042", "environment": "Production", "evidence": "EVD-301" if "Evidence" in action else "", "synthetic": True})
     for index in range(7):
         state["trends"].append({"date": (anchor - timedelta(days=6 - index)).strftime("%b %d"), "critical": [1, 2, 1, 0, 2, 1, 2][index], "high": [4, 3, 5, 3, 4, 2, 4][index], "other": [8, 6, 9, 7, 6, 5, 6][index], "resolved": [10, 9, 12, 8, 10, 7, 9][index]})
+    add_story_data(state, stamp)
     return state

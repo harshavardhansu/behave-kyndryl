@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Clock3,
   Database,
+  DatabaseBackup,
   FileKey2,
   GitBranch,
   Globe,
@@ -27,7 +28,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useWorkspace } from '../context'
-import { request } from '../lib/api'
+import { post, request } from '../lib/api'
 import { errorMessage } from '../lib/format'
 import type { Integration, Policy, Service, Session } from '../types'
 import {
@@ -241,6 +242,45 @@ function PolicyEditor() {
   )
 }
 
+function DemoResetButton() {
+  const { data, can, refresh, notify } = useWorkspace()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  if (data.mode !== 'demo' || !can('admin:write')) return null
+  async function reset() {
+    setBusy(true)
+    try {
+      const result = await post<{ message: string }>('/admin/demo-reset', {})
+      await refresh()
+      notify(result.message)
+      setOpen(false)
+    } catch (failure) {
+      notify(errorMessage(failure), true)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <DatabaseBackup size={15} /> Reset demo data
+      </Button>
+      <Modal open={open} onClose={() => !busy && setOpen(false)} title="Reset demo data" description="Restore the realistic demo stories for a fresh demo run.">
+        <Notice title="What happens">
+          Your current workspace data (incidents, missions, evidence, audit trail) is backed up to data/backups/ and replaced with
+          the original demo stories. You stay signed in. The Payment API sandbox is stopped.
+        </Notice>
+        <div className="modal-footer">
+          <Button onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+          <Button variant="primary" busy={busy} onClick={() => void reset()}>
+            <DatabaseBackup size={15} /> Back up and reset
+          </Button>
+        </div>
+      </Modal>
+    </>
+  )
+}
+
 export function Administration() {
   const { data, session, can, refresh } = useWorkspace()
   const [tab, setTab] = useState('Integrations')
@@ -316,10 +356,13 @@ export function Administration() {
         title="Administration"
         description="Workspace configuration / Least-privilege access / Integration boundaries"
         actions={
-          <Badge tone="outline">
-            <Settings2 size={12} />
-            {session.user.role}
-          </Badge>
+          <>
+            <DemoResetButton />
+            <Badge tone="outline">
+              <Settings2 size={12} />
+              {session.user.role}
+            </Badge>
+          </>
         }
       />
       <Tabs

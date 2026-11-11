@@ -115,12 +115,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     queryKey: ['workspace'],
     queryFn: () => request('/workspace'),
     enabled: Boolean(sessionQuery.data),
-    refetchInterval: (query) =>
-      query.state.data?.incidents.some(
-        (incident) => incident.workflowStatus === 'Running'
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (
+        data?.incidents.some((incident) => incident.workflowStatus === 'Running') ||
+        data?.missions?.some((mission) => ['Analysing', 'Working'].includes(mission.status))
       )
-        ? 1200
-        : 30_000,
+        return 1000
+      // A mission waiting for a human may be decided by someone else (another browser): stay fresh.
+      if (data?.missions?.some((mission) => mission.status.startsWith('Awaiting') || mission.status === 'Paused')) return 4000
+      return 30_000
+    },
   })
 
   function notify(message: string, error = false) {

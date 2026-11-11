@@ -11,7 +11,11 @@ def test_fixture_references_and_topology():
     incidents = {record["id"] for record in state["incidents"]}
     services = {record["id"] for record in state["services"]}
     evidence = {record["id"] for record in state["evidence"]}
-    assert len(services) == 15
+    assert len(services) == 16  # 15 production services + the local Payment API sandbox
+    assert all(any(item["incidentId"] == incident for item in state["evidence"]) for incident in incidents), "every demo incident needs evidence"
+    for hypothesis in state["hypotheses"]:
+        assert set(hypothesis["supports"]) | set(hypothesis["contradicts"]) <= evidence
+    assert len(evidence) == len(state["evidence"]), "evidence IDs must be unique"
     for edge in state["dependencies"]:
         assert edge["source"] in services and edge["target"] in services
         assert 0 <= edge["strength"] <= 1

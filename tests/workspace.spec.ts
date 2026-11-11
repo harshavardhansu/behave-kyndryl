@@ -112,40 +112,52 @@ test('graph nodes, edges, health filters, zoom and reset are interactive', async
   await expect(page.locator('.inspector-identity h3')).toHaveText('Redis cache')
 })
 
-test('War Room command view shows the orchestrator, lifecycle squads and opens agent evidence', async ({ page }) => {
+test('War Room agent mission forms a team and stops at every human decision', async ({ page }) => {
   await openWorkspace(page, '/war-room')
   await expect(page.getByRole('button', { name: 'Command view' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.cmd-hub .workforce-core-label')).toContainText('ORCHESTRATOR')
   await expect(page.locator('.workforce-truth-row')).toContainText('SIMULATED')
-  await expect(page.locator('.workforce-integrity-note')).toContainText('planner selection/skip decisions')
   await expect(page.locator('.cmd-squad')).toHaveCount(4)
-  for (const squad of ['Investigate', 'Diagnose', 'Remediate & Validate', 'Govern & Release']) {
-    await expect(page.locator('.cmd-squad-pill').filter({ hasText: squad })).toHaveCount(1)
-  }
-  await expect(page.locator('.cmd-member')).toHaveCount(13)
-  await expect(page.locator('.cmd-gate').first()).toContainText('Human approval')
-  await expect(page.locator('.cmd-fan').first()).toBeVisible()
+  await expect(page.locator('.mission-empty')).toContainText('No agent mission yet')
   const stagePixels = await screenshotPixelSummary(page, await page.locator('.cmd-stage').screenshot({ animations: 'disabled' }))
   expect(stagePixels.width).toBeGreaterThan(600)
-  expect(stagePixels.height).toBeGreaterThan(400)
   expect(stagePixels.redPixels).toBeGreaterThan(0)
+
+  await page.getByRole('button', { name: 'Start agent mission' }).click()
+  const gate = page.locator('.mission-gate')
+  await expect(gate).toContainText('Approve the team for iteration 1')
+  const proposed = await page.locator('.cmd-member:not(.is-skipped)').count()
+  expect(proposed).toBeGreaterThan(0)
+  expect(proposed).toBeLessThan(13)
+  await expect(page.locator('.cmd-member.is-skipped').first()).toBeVisible()
+  await expect(page.locator('.cmd-hub .workforce-core-label')).toContainText('awaiting approval')
+  await expect(page.locator('.mission-feed')).toContainText('Proposed a team of')
+
+  await gate.getByRole('button', { name: 'Approve team' }).click()
+  await expect(gate).toContainText('Approve the root cause', { timeout: 20_000 })
+  await expect(page.locator('.cmd-state.is-done').first()).toBeVisible()
   await page.locator('.cmd-member').filter({ hasText: 'Log analysis' }).click()
   await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
   await expect(page.locator('.workforce-agent-inspector')).toContainText('EVD-301')
-  await expect(page.locator('.cmd-details')).toContainText('Log analysis')
+
+  await gate.getByRole('button', { name: 'Approve root cause' }).click()
+  await expect(gate).toContainText('Approve the fix for release', { timeout: 20_000 })
+  await expect(page.locator('.mission-gate-blocked')).toContainText('Separation of duties')
+  await expect(gate.getByRole('button', { name: 'Approve fix' })).toBeDisabled()
+
   await page.getByRole('button', { name: '2D list' }).click()
-  await expect(page.locator('.workforce-list-agent')).toHaveCount(14)
-  await page.locator('.workforce-list-agent').filter({ hasText: 'Log analysis' }).click()
-  await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.locator('.workforce-agent-inspector')).toContainText('INC-1042-logs')
-  await expect(page.locator('.workforce-agent-inspector')).toContainText('EVD-301')
+  await expect(page.locator('.workforce-list-agent')).toHaveCount(proposed + 1)
+  await page.getByRole('button', { name: 'Cancel mission' }).click()
+  await expect(page.locator('.mission-empty')).toContainText('Last mission cancelled')
 })
 
 test('War Room command search highlights matches and selects an agent', async ({ page }) => {
   await openWorkspace(page, '/war-room')
+  await page.getByRole('button', { name: 'Start agent mission' }).click()
+  await expect(page.locator('.mission-gate')).toContainText('Approve the team')
   const search = page.getByRole('textbox', { name: 'Search the workforce' })
   await search.fill('root')
-  await expect(page.locator('.cmd-member').filter({ hasText: 'Log analysis' })).toHaveClass(/is-dim/)
+  await expect(page.locator('.cmd-member:not(.is-skipped)').filter({ hasText: 'Log analysis' })).toHaveClass(/is-dim/)
   await expect(page.locator('.cmd-member').filter({ hasText: 'Root-cause analysis' })).not.toHaveClass(/is-dim/)
   await search.press('Enter')
   await expect(page.getByRole('tab', { name: 'Agent', exact: true })).toHaveAttribute('aria-selected', 'true')
@@ -153,6 +165,8 @@ test('War Room command search highlights matches and selects an agent', async ({
   await page.getByRole('combobox', { name: 'Filter workforce by status' }).selectOption('Completed')
   await search.fill('')
   await expect(page.locator('.cmd-member.is-dim').first()).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel mission' }).click()
+  await expect(page.locator('.mission-empty')).toBeVisible()
 })
 
 test('incident intake validates input and uploads redacted evidence', async ({ page }) => {
@@ -310,8 +324,9 @@ test('desktop, tablet and mobile layouts stay within the viewport', async ({ pag
       await navigate(page, path)
       await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
       if (path === '/war-room') {
-        if (viewport.width <= 820) await expect(page.locator('.cmd-compact .cmd-member').first()).toBeVisible()
+        if (viewport.width <= 820) await expect(page.locator('.cmd-compact .cmd-card').first()).toBeVisible()
         else await expect(page.locator('.cmd-card')).toHaveCount(4)
+        await expect(page.locator('.mission-panel')).toBeVisible()
         await expect(page.locator('.cmd-hub')).toBeVisible()
       }
       const overflow = await page.evaluate(() => ({

@@ -1,4 +1,6 @@
 import csv
+from pathlib import Path
+import os
 import hashlib
 import io
 import json
@@ -24,8 +26,13 @@ from .domain import ActionInput, DataClassification, EvidenceInput, IncidentInpu
 from .payment_sandbox import PaymentSandboxControl, PaymentSandboxControlAdapter
 from .providers import Assessment, ProviderError, configured_provider, validate_references
 from .seed import seed_workspace
+from .ai_client import AIBudget, ai_configured, key_mode
+from .foundry_brain import FoundryBrain
+from .mission import DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
-from .workflow import act, audit, change_gates, find, identifier, record_payment_sandbox_result, require, run_demo_workflow
+from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
+from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
+from .sandbox_records import record_measurement
 
 
 class LoginInput(StrictModel):
@@ -108,14 +115,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 if operation["status"] == "PENDING":
                     operation.update(status="MANUAL_INTERVENTION_REQUIRED", completedAt=now(), error="The sandbox operation outcome is uncertain after restart. Inspect active configuration before taking further action.")
                     audit(state, {"name": "System", "role": "Recovery"}, "Payment sandbox operation requires review", operation["id"], outcome="MANUAL_INTERVENTION_REQUIRED")
+            pause_interrupted(state)
         database.mutate(recover)
         yield
+        control = application.state.sandbox_control
+        if isinstance(control, LocalPaymentSandbox):
+            control.stop()
 
     application = FastAPI(title="BEHAVE KYNDRYL API", version="1.0.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
     application.state.store = database
     application.state.settings = config
     application.state.provider = configured_provider(config)
-    application.state.sandbox_control = sandbox_control or PaymentSandboxControlAdapter()
+    application.state.mission_brain = FoundryBrain(config, database) if ai_configured(config) and config.ai_allowed_classifications else SimulatedBrain()
+    # Local mode (default) runs the real Payment API as a local process: no Docker needed.
+    application.state.sandbox_control = sandbox_control or (
+        LocalPaymentSandbox() if os.getenv("PAYMENT_SANDBOX_MODE", "local") == "local" else PaymentSandboxControlAdapter()
+    )
+    application.state.mission_tools = MissionTools(application.state.sandbox_control) if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None
     sandbox_operation_lock = Lock()
     rate_buckets: dict[str, deque] = defaultdict(deque)
     jwks = jwt.PyJWKClient(f"https://login.microsoftonline.com/{config.azure_tenant_id}/discovery/v2.0/keys", cache_keys=True, timeout=5) if config.mode == "production" else None
@@ -233,6 +249,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         require(auth["user"], "read")
         state = database.read()
         state.pop("idempotency", None)
+        state.pop("aiCache", None)
+        for mission in state.get("missions", []):
+            mission.pop("brainCache", None)
+        state["aiMode"] = application.state.mission_brain.mode
+        control = application.state.sandbox_control
+        state["paymentSandbox"] = control.status() if hasattr(control, "status") else {"mode": "container", "running": False}
+        AIBudget(database, config)._usage(state)
         for change in state["changes"]:
             change["gates"] = change_gates(state, change)
         for integration in state["integrations"]:
@@ -240,8 +263,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 integration["dataPolicy"] = {"allowedClassifications": config.ai_allowed_classifications, "restrictedDataAllowed": False}
                 if "AGENTICA_AI_ALLOWED_CLASSIFICATIONS" not in integration["required"]:
                     integration["required"].append("AGENTICA_AI_ALLOWED_CLASSIFICATIONS")
-                if config.azure_ai_project_endpoint and config.azure_ai_model_deployment:
+                if ai_configured(config):
                     integration["status"] = "Configured, not verified" if config.ai_allowed_classifications else "Blocked by data policy"
+                    integration["authentication"] = "API key" if key_mode(config) else "Microsoft Entra ID"
             if integration["id"] == "entra" and config.mode == "production":
                 integration["status"] = "Configured, not verified"
         state["audit"].sort(key=lambda event: event["timestamp"], reverse=True)
@@ -318,6 +342,109 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 raise HTTPException(503, result.get("message", "The Payment API sandbox operation was not verified. No success is implied."))
         if result["launch"]:
             background.add_task(run_demo_workflow, database, incident_id, result["generation"], config.demo_step_seconds)
+        return result
+
+    def launch_mission(background: BackgroundTasks, result: dict) -> None:
+        if result.get("launch"):
+            background.add_task(run_mission, database, result["missionId"], result["runToken"], application.state.mission_brain, config.demo_step_seconds, application.state.mission_tools)
+
+    # ---------------- Payment API sandbox (local, real, measurable) ----------------
+
+    def local_sandbox() -> LocalPaymentSandbox:
+        control = application.state.sandbox_control
+        if not isinstance(control, LocalPaymentSandbox):
+            raise HTTPException(409, "The local Payment API sandbox is not enabled (PAYMENT_SANDBOX_MODE is not 'local').")
+        return control
+
+    def sandbox_incident(state: dict, incident_id: str | None) -> dict | None:
+        if incident_id:
+            incident = find(state, "incidents", incident_id)
+            if not is_payment_sandbox(incident):
+                raise HTTPException(422, "Measurements can only be attached to a Payment API sandbox incident.")
+            return incident
+        return next((item for item in state["incidents"] if is_payment_sandbox(item) and item["status"] not in {"Closed", "Resolved"}), None)
+
+    class SandboxRunInput(StrictModel):
+        incidentId: str | None = Field(None, max_length=40)
+
+    @application.get("/api/v1/sandbox/payment")
+    def sandbox_status(auth: Auth):
+        require(auth["user"], "read")
+        status = application.state.sandbox_control.status() if hasattr(application.state.sandbox_control, "status") else {"mode": "container"}
+        return {**status, "measurements": database.read().get("sandboxMeasurements", [])[-10:]}
+
+    @application.post("/api/v1/sandbox/payment/start")
+    def sandbox_start(auth: Auth):
+        require(auth["user"], "workflow:run", "Sandbox")
+        try:
+            status = local_sandbox().start(actor_id=auth["user"]["id"])
+        except SandboxError as error:
+            raise HTTPException(503, str(error)) from None
+        database.mutate(lambda state: audit(state, auth["user"], "Payment sandbox started", "payment-api", next_state="v3.8.1 / pool 5"))
+        return status
+
+    @application.post("/api/v1/sandbox/payment/reset")
+    def sandbox_reset(auth: Auth):
+        require(auth["user"], "workflow:run", "Sandbox")
+        result = local_sandbox().apply_configuration("3.8.1", 5, actor_id=auth["user"]["id"])
+        if result["status"] != "SUCCEEDED":
+            raise HTTPException(503, result["error"])
+        database.mutate(lambda state: audit(state, auth["user"], "Payment sandbox reset to the faulty release", "payment-api", next_state="v3.8.1 / pool 5"))
+        return local_sandbox().status()
+
+    @application.post("/api/v1/sandbox/payment/workload")
+    def sandbox_workload(payload: SandboxRunInput, auth: Auth):
+        require(auth["user"], "workflow:run", "Sandbox")
+        sandbox = local_sandbox()
+        try:
+            measurement = sandbox.run_workload(50)
+        except SandboxError as error:
+            raise HTTPException(409, str(error)) from None
+        log_lines = read_recent_errors(sandbox)
+
+        def record(state: dict) -> dict:
+            incident = sandbox_incident(state, payload.incidentId)
+            ids = record_measurement(state, incident, measurement, log_lines, auth["user"], "manual run")
+            return {"measurement": measurement, "evidenceIds": ids, "incidentId": incident["id"] if incident else None}
+
+        return database.mutate(record)
+
+    @application.post("/api/v1/admin/demo-reset")
+    def demo_reset(auth: Auth):
+        """Restore the realistic demo stories. Backs up the current data first. Demo mode only."""
+        require(auth["user"], "admin:write")
+        if config.mode != "demo":
+            raise HTTPException(403, "Demo data can only be reset in demo mode.")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup = database.backup(Path("data") / "backups" / f"agentica-{stamp}.db")
+        fresh = seed_workspace(True)
+        database.reset(fresh)
+        database.mutate(lambda state: audit(state, auth["user"], "Demo data reset", "workspace", next_state="Fresh demo stories", evidence=str(backup or "")))
+        control = application.state.sandbox_control
+        if isinstance(control, LocalPaymentSandbox):
+            control.stop()
+        return {"message": "Demo data restored." + (f" Previous data backed up to {backup}." if backup else ""), "backup": str(backup) if backup else None}
+
+    @application.post("/api/v1/incidents/{incident_id}/missions", status_code=201)
+    def create_mission(incident_id: str, background: BackgroundTasks, auth: Auth):
+        result = database.mutate(lambda state: start_mission(state, incident_id, auth["user"], application.state.mission_brain))
+        launch_mission(background, result)
+        return result
+
+    @application.post("/api/v1/missions/{mission_id}/decision")
+    def mission_decision(mission_id: str, payload: DecisionInput, background: BackgroundTasks, auth: Auth):
+        result = database.mutate(lambda state: decide(state, mission_id, payload, auth["user"]))
+        launch_mission(background, result)
+        return result
+
+    @application.post("/api/v1/missions/{mission_id}/cancel")
+    def mission_cancel(mission_id: str, auth: Auth):
+        return database.mutate(lambda state: cancel_mission(state, mission_id, auth["user"]))
+
+    @application.post("/api/v1/missions/{mission_id}/resume")
+    def mission_resume(mission_id: str, background: BackgroundTasks, auth: Auth):
+        result = database.mutate(lambda state: resume_mission(state, mission_id, auth["user"]))
+        launch_mission(background, result)
         return result
 
     @application.post("/api/v1/incidents/{incident_id}/assessment")

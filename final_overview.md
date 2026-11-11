@@ -33,10 +33,14 @@ All UI and API labels use a fixed set of truthfulness terms: `REAL`, `MEASURED`,
 | **Logo** | "BEHAVE KYNDRYL" text replaced by a Bridge-style lowercase wordmark, **behave kyndryl**: **behave** in grey and **kyndryl** in red, followed by a "Command Centre" label after a divider. |
 | **Search fields** | Fixed a double border: a second box was drawn inside every search field. |
 | **AI War Room** | The 3D scene was replaced by an animated **agent command view** in the site's light theme: the Orchestrator hub, four lifecycle squads, live squad dashboards, real project items and a human-approval gate. |
-| **Tests** | Browser tests updated for the new header, wordmark and War Room background. All suites pass. |
+| **Realistic demo data** | All 13 incidents now have consistent stories: 44 evidence records, 12 hypotheses, 6 fixes, 9 runbooks, 120 log lines and deployments. **Administration → Reset demo data** (backed up first) restores them for every rehearsal. |
+| **Live Payment API sandbox** | The real Payment API now runs **locally with no Docker**. The War Room can start it, fire 50 concurrent requests and record **measured** evidence. Missions on INC-1043 apply the human-approved fix (pool 5 → 20) to the running service and **prove recovery by re-measuring** (8/50 → 0/50 failures). See `DEMO_GUIDE.md`. |
+| **Azure OpenAI** | Missions now run on **gpt-4.1-mini** via API key, with a daily call limit, answer cache, usage meter, strict answer formats and automatic labelled fallback to the free simulated planner. Verified with a live mission (about 6 calls, under 1 cent). |
+| **Agent missions** | New Orchestrator-led loop: the Orchestrator analyses a ticket, proposes a team of only the specialists it needs, and the team works in steps with human approval at every important decision, iterating with learnings until resolved or escalated. Shown live in the AI War Room. |
+| **Tests** | Browser tests updated for the new header, wordmark, War Room and mission flow; 10 new backend mission tests. All suites pass. |
 | **Developer setup** | Dependencies reinstalled, `.env` created, a working `.venv` created for the backend and browser tests, and the Playwright Chromium browser installed. |
 
-Details of each change are in sections 7–9.
+Details of each change are in sections 7–12.
 
 ---
 
@@ -299,18 +303,185 @@ The War Room's workforce panel was redesigned from scratch, inspired by a refere
 
 ---
 
-## 10. Payment API sandbox (Stage 1A)
+## 10. Agent missions: Orchestrator-led teams with humans in the loop
 
-This is a real, deliberately faulty service that gives the agents a genuine incident to resolve.
+The core idea of the project: when a ticket comes in, the **Orchestrator** analyses it and forms a **team of only the specialists it needs**. The team works step by step, and **a human approves every important decision**. If the first attempt doesn't resolve the issue, the next iteration builds on what was learned and adds specialists if needed. Everything is visible live in the **AI War Room**.
 
-- **Release v3.8.1:** DB pool size **5**, so it times out under concurrent load. It adds `GET /payments/summary`.
-- **Previous release:** pool size **20**, without that endpoint.
-- **Adapter:** `backend/payment_sandbox.py` may only change the release and pool size of the fixed `behave-payment-sandbox` project.
-- **Status: NOT RUN.** It needs Podman and `podman-compose`, which are not part of the local setup used here, and the original build was blocked by a registry certificate error.
+**Files:**
+- `backend/mission.py`: the mission engine (new).
+- `backend/app.py`: the mission API endpoints.
+- `backend/store.py`: missions are persisted.
+- `src/components/war-room/MissionPanel.tsx` and `mission-panel.css`: the mission control panel (new).
+- `src/lib/missions.ts`: shared helpers (new).
+- `AgentCommandView.tsx`: gained a mission mode.
+- `src/pages/WarRoom.tsx`: now driven by the mission team.
+- `backend/tests/test_missions.py`: 10 new tests.
+
+### The loop
+
+```
+Ticket → Orchestrator analyses → proposes team (chosen + left out, with reasons)
+       → ✋ human approves / edits / rejects the team
+       → Investigate → Diagnose → ✋ human approves the root cause
+       → Remediate & validate → ✋ a DIFFERENT person approves the fix
+       → Govern & release → Orchestrator evaluates the outcome
+       → ✋ human: confirm resolved / start another iteration / escalate
+Next iteration: re-plan with the learnings, keep or add specialists (max 3 iterations, then escalate)
+```
+
+| Human gate | Who can decide | Notes |
+|---|---|---|
+| Approve the team | `workflow:run` (Incident Manager, SRE, Admin) | Tick or untick agents to add or remove them; rejecting needs a reason, and the Orchestrator re-plans |
+| Approve the root cause | `workflow:run` | Rejecting ends the iteration and starts the next one with that learning |
+| Approve the fix | `approval:decide` (Change Approver, Admin), **not** the person who started the mission | Separation of duties is enforced by the API, not just the UI |
+| Confirm the outcome | `workflow:run` | Resolve, iterate (up to 3), or escalate |
+
+Every decision is recorded in the mission and in the **Audit trail**.
+
+### API
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/incidents/{id}/missions` | Start a mission (one open mission per incident; evidence required) |
+| `POST /api/v1/missions/{id}/decision` | Decide the pending gate: `gateId`, `decision` (approve, reject, resolve, iterate, escalate), optional `addRoles`, `removeRoles` and `note` |
+| `POST /api/v1/missions/{id}/cancel` | Cancel an open mission |
+| `POST /api/v1/missions/{id}/resume` | Resume a mission paused by a restart or error |
+
+Missions come back in the normal workspace snapshot (`missions`). While a mission is analysing or working, the frontend refreshes every second.
+
+### The "brain": Azure OpenAI with a free simulated fallback
+
+The logic that plans, works and evaluates is pluggable (`MissionBrain`). The backend chooses it at startup:
+
+| Brain | When it's used | Label shown |
+|---|---|---|
+| **`FoundryBrain`** (`backend/foundry_brain.py`) | An Azure model is configured **and** the data rule allows the incident's data | **AI-GENERATED / Azure OpenAI gpt-4.1-mini** |
+| **`SimulatedBrain`** (`backend/mission.py`) | No AI configured, in all automated tests, and as the automatic fallback | **SIMULATED / rule-based planner** (or **Simulated fallback** with the reason) |
+
+**How the AI brain works:**
+- **One call per job:**
+  - one call to plan the team;
+  - **one call per mission step**, not per agent: all of that step's specialists are answered together;
+  - one call to review the outcome.
+  That's at most 6 calls per iteration.
+- **Strict answer formats:** every answer must match a fixed JSON format (team plan, step findings, outcome).
+- **The backend checks every answer:**
+  - only the 13 real specialist roles are accepted;
+  - evidence IDs that don't exist for the incident are dropped;
+  - confidence is clamped to 0–1;
+  - left-out specialists are always listed with a reason;
+  - a specialist with no finding gets a labelled simulated one.
+- **What the AI receives:** only the ticket, trimmed evidence (at most 8 records, 400 characters each), the specialist catalog, the learnings so far, earlier findings and the human decisions. Secrets are redacted first.
+- **Safety instructions:** ticket and evidence content is untrusted data and never instructions; the AI cannot approve, deploy or execute anything; it may cite only supplied evidence IDs.
+- **Fallback:** if a call can't be made or its answer fails the checks, the free simulated planner answers instead. The mission panel shows **Simulated fallback**, and the Activity feed says why.
+- **No blocking:** AI calls run *outside* the database lock, so the app stays responsive while Azure answers.
+
+**Cost controls** (`backend/ai_client.py`):
+
+| Control | Setting | Default |
+|---|---|---|
+| Daily call limit (UTC); after that, the simulated planner is used | `AGENTICA_AI_DAILY_CALL_LIMIT` | 40 |
+| Maximum answer length | `AGENTICA_AI_MAX_OUTPUT_TOKENS` | 900 |
+| Answer cache: identical requests are answered from the cache for free (last 150 answers) | — | on |
+| Usage meter: calls, tokens and cache hits, shown in the mission panel | — | on |
+| Data rule: only allowed data classes are ever sent | `AGENTICA_AI_ALLOWED_CLASSIFICATIONS` | `["Internal"]` for the demo |
+| Tests never call Azure (`backend/tests/conftest.py` and `tests/global-setup.ts` blank the AI settings) | — | on |
+
+**Live check (2026-11-11):** one full iteration on INC-1042 used **6 calls, about 5,900 input and 1,000 output tokens**, well under 1 cent.
+- **Team:** the AI proposed a lean team of 4 (logs, observability, root cause, remediation).
+- **Root cause:** it identified the v2.18.0 change cutting the DB pool from 30 to 10 (EVD-304), with 0.95 confidence.
+- **Fix:** it proposed restoring the pool, with a rollback plan.
+- **Outcome:** it recommended another iteration adding validation, testing, release and summary.
+
+**Configuration** (in `.env`, which is git-ignored and never pushed):
+
+```
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1
+AZURE_OPENAI_API_KEY=<key>
+AZURE_AI_MODEL_DEPLOYMENT=gpt-4.1-mini
+AGENTICA_AI_ALLOWED_CLASSIFICATIONS=["Internal"]
+AGENTICA_AI_DAILY_CALL_LIMIT=40
+AGENTICA_AI_MAX_OUTPUT_TOKENS=900
+```
+
+Other cheap deployments available on the resource: `gpt-4.1-nano` (cheapest), `gpt-4o-mini`, `gpt-5-mini` and `gpt-5-nano`. The gpt-5 models spend extra hidden reasoning tokens. The "Model assessment" button on the Root cause analysis page uses the same API-key connection.
+
+### In the AI War Room
+
+- **Mission panel:**
+  - **Header:** mission ID, mode, status, a live indicator, the iteration stepper and Cancel or Resume.
+  - **Analysis:** the Orchestrator's analysis line.
+  - **Decision card:** a highlighted **human decision card**: amber for team and root cause, red for the fix, teal for the outcome. The team card is an editable list with reasons; the separation-of-duties message appears when it applies.
+  - **Learned so far:** carried between iterations.
+  - **Activity feed:** a live timeline of every step, finding, hand-off and decision.
+- **Command view:**
+  - shows the actual mission team;
+  - proposed agents wait "awaiting approval";
+  - left-out agents show greyed as "Held back", "Removed" or "Not needed", with the reason on hover;
+  - squads with nobody on the team are marked "Not needed";
+  - the hub caption follows the mission ("Team proposed · awaiting approval", "Team at work · iteration 2", "Awaiting human decision", …).
+- **Agent details:** clicking an agent opens it in the inspector, showing why it was chosen, its finding, the evidence it cited and whether the finding was AI-generated or a simulated fallback.
+- **AI labels:** the header shows **AI-GENERATED** or **SIMULATED**, and the provider reads "Azure OpenAI gpt-4.1-mini (API key)". The mission panel shows the usage meter ("2/40 calls today · 1.9k tokens") and tags each plan as **AI-generated plan** or **Simulated fallback**.
+
+The existing 17-action incident workflow (`workflow.py`) is unchanged; a mission records proposals, findings, decisions and learnings but does not change the incident's lifecycle status by itself.
 
 ---
 
-## 11. Configuration (`.env`)
+## 11. Payment API sandbox: live, local and measurable
+
+A real payment service (`payment_api/app.py`) that fails for real and recovers for real. It's the "testable thing" in the demo. Full talk track: **[DEMO_GUIDE.md](DEMO_GUIDE.md)**.
+
+| Release | Pool size | Feature X (`GET /payments/summary`) | 50 concurrent requests (measured) |
+|---|---|---|---|
+| v3.8.1 (faulty) | 5 | available | about 8–9 of 50 fail with HTTP 500, p95 about 2.4 s |
+| v3.8.1 (approved fix) | 20 | available | 0 of 50 fail, p95 about 0.9 s |
+| previous (approved rollback) | 20 | not available (404) | 0 failures, but the feature is gone |
+
+**How it works:**
+- **Local mode (default, no Docker)** — `backend/payment_local.py`:
+  - runs the Payment API as a local process on `127.0.0.1:18080` with its own SQLite file;
+  - uses the same bounded connection pool as the container deployment (no overflow, 2 s wait limit, 0.3 s hold per request);
+  - accepts only the 3 approved configurations, and verifies each change against the live `/control/config`;
+  - writes each change to `data/payment-sandbox-audit.jsonl`;
+  - starts it as a separate process, so stopping the backend stops it too.
+- **API** (`backend/app.py`): status, start, run workload and reset endpoints under `/api/v1/sandbox/payment` (Incident Manager, SRE or Administrator).
+- **Evidence** (`backend/sandbox_records.py`): each run is saved as a **MEASURED** metric on INC-1043, plus the real error lines from the service log, so agents and the AI reason over observed numbers.
+- **Missions:** on the sandbox incident, the fix gate states the **exact action**. After a *different* person approves it, the mission:
+  1. applies it to the running service;
+  2. re-runs the workload;
+  3. decides the outcome from the **measurement** (not an AI or simulated guess).
+- **The classic workflow** (Changes → deploy) uses the same controller.
+- **Container mode:** `PAYMENT_SANDBOX_MODE=container` selects the original Podman Compose adapter (`backend/payment_sandbox.py`, `compose.yaml`).
+- **War Room panel:** shows running state, release, pool size, Feature X, a 50-bar result chart, the error rate and p95, and a history of runs.
+
+**Live verification (2026-11-11):**
+- Before: pool 5 gave **8/50 failed** (16%, p95 2,459 ms).
+- The AI mission proposed a team of 3, root cause at confidence 0.95, and the fix *pool 5 → 20*. The Change Approver approved it.
+- The mission applied it, and the live service reported pool 20.
+- After: **0/50 failed**, p95 942 ms, Feature X available.
+- AI cost: 3 calls, about 3,800 tokens.
+
+---
+
+## 12. Realistic demo data and reset
+
+**What the demo data contains** (`backend/seed_stories.py`, on top of `backend/seed.py`):
+- every incident has a coherent story that matches its service, status and impact;
+- 44 evidence records (logs, metrics, traces, change records, tests);
+- 12 hypotheses with supporting and contradicting evidence;
+- 6 remediation proposals, 4 test runs, 9 runbooks, 7 deployments, 120 log lines and an audit timeline.
+
+**How to reset it:**
+- **Administration → Reset demo data** (Administrator, demo mode only):
+  - backs up the current database to `data/backups/agentica-<time>.db`;
+  - restores the stories;
+  - keeps you signed in;
+  - stops the sandbox.
+- **From a terminal** (with the backend stopped): `python -m backend.demo_reset`.
+
+---
+
+## 13. Configuration (`.env`)
 
 `.env` was created from `.env.example`. Key settings:
 
@@ -326,7 +497,7 @@ This is a real, deliberately faulty service that gives the agents a genuine inci
 
 ---
 
-## 12. Running the project
+## 14. Running the project
 
 **One-time setup:**
 
@@ -354,11 +525,11 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 ---
 
-## 13. Verification (2026-11-11, after all changes)
+## 15. Verification (2026-11-11, after all changes)
 
 | Check | Command | Result |
 |---|---|---|
-| Backend tests | `pytest backend/tests` (in-memory DB) | **60 passed** |
+| Backend tests | `pytest backend/tests` (in-memory DB) | **84 passed** (incl. mission, Foundry-brain, live sandbox process and reset tests) |
 | Sandbox tests | `pytest payment_api/tests` | **8 passed** |
 | Typecheck | `npm run typecheck` | **Passed** |
 | Lint | `npm run lint` | **Passed** |
@@ -381,13 +552,13 @@ The Python tests ran against an in-memory database, so the demo data in `data/ag
 
 ---
 
-## 14. Roadmap and status
+## 16. Roadmap and status
 
 | Stage | Status | Scope |
 |---|---|---|
 | 0 Repository audit | PASS | Audit, architecture and mapping docs |
 | 1A Payment API sandbox | WARN | Code complete; runtime acceptance NOT RUN |
-| 1B Agents, evidence, events, security | NOT RUN | Planner that picks agents from the incident inputs, real read-only tools, durable events, approval bound to the exact action |
+| 1B Agents, evidence, events and security | IN PROGRESS | **Done:** Orchestrator-led missions with dynamic team selection and skip reasons, human gates, iterations with learnings, persisted events, all shown live in the War Room (simulated rule-based planner). **Also done:** Azure OpenAI brain (gpt-4.1-mini) with cost limits, verified live. **Next:** real read-only tools |
 | 2 Workforce view and replay | WARN | The agent command view replaces the 3D scene; full acceptance (dynamic selection, replay) depends on 1B |
 | 3 Golden scenario | NOT RUN | Full end-to-end Payment API recovery |
 | 4 Business value and benchmark | NOT RUN | Human baseline vs BEHAVE |
@@ -395,7 +566,7 @@ The Python tests ran against an in-memory database, so the demo data in `data/ag
 
 ---
 
-## 15. Known limitations
+## 17. Known limitations
 
 - Investigation, testing, scanning and deployment are synthetic except in the Payment API sandbox.
 - There is a single workspace with no tenant isolation, so don't use real secrets or production data.
@@ -407,7 +578,7 @@ The Python tests ran against an in-memory database, so the demo data in `data/ag
 
 ---
 
-## 16. Suggested reading order
+## 18. Suggested reading order
 
 1. `README.md`, then `docs/architecture.md` and `docs/implementation-roadmap.md`
 2. `backend/domain.py`, then `backend/workflow.py`, then `backend/app.py`

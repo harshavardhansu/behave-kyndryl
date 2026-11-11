@@ -937,6 +937,72 @@ button.cmd-fan {
     }
 }
 
+/* ---------- Mission: specialists the Orchestrator did not pick ---------- */
+
+.cmd-member.is-skipped {
+    color: #8c8c8c;
+    cursor: help;
+}
+
+.cmd-member.is-skipped:hover {
+    background: transparent;
+    transform: none;
+}
+
+.cmd-member.is-skipped .cmd-member-dot {
+    border: 1.5px dashed #a8a8a8;
+    background: transparent;
+}
+
+.cmd-member.is-skipped .cmd-member-status {
+    font-style: italic;
+}
+
+.cmd-member-empty {
+    padding: 6px;
+    color: #8c8c8c;
+    font-size: 11px;
+}
+
+.cmd-card.is-skipped {
+    border-top-color: #d0d0d0;
+    background: #fafafa;
+    box-shadow: none;
+}
+
+.cmd-state.is-skipped {
+    background: #f2f2f2;
+    color: #8c8c8c;
+}
+
+.cmd-squad.is-skipped .cmd-hex {
+    opacity: 0.4;
+    filter: grayscale(1);
+    animation: none;
+}
+
+.cmd-squad.is-skipped .cmd-squad-pill {
+    border-color: #d0d0d0;
+    color: #8c8c8c;
+    box-shadow: none;
+}
+
+.cmd-squad.is-skipped .cmd-port {
+    background: #c6c6c6;
+    box-shadow: 0 0 0 1px #c6c6c6;
+    animation: none;
+}
+
+.cmd-link-group.is-skipped .cmd-link {
+    stroke: #c6c6c6;
+    stroke-opacity: 0.45;
+}
+
+/* Members joining the team animate in */
+.cmd-members li {
+    animation: cmd-slide-in 0.4s ease-out both;
+}
+
 /* ---------- Fullscreen ---------- */
 
 .cmd-shell.is-fullscreen {

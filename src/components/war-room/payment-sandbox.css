@@ -1,0 +1,241 @@
+/* Live Payment API sandbox panel (real, measured incident reproduction). */
+
+.sandbox-panel {
+    border-bottom: 1px solid #e3e3e3;
+    background: #ffffff;
+}
+
+.sandbox-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eeeeee;
+    background: linear-gradient(100deg, #f4f8f8, #ffffff 70%);
+}
+
+.sandbox-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.sandbox-title > svg {
+    color: var(--accent, #29707a);
+}
+
+.sandbox-title strong {
+    font-weight: 500;
+}
+
+.sandbox-real {
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: #defbe6;
+    color: #0e6027;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+.sandbox-config {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+    color: #525252;
+    font-size: 12px;
+}
+
+.sandbox-config b {
+    font-weight: 500;
+    color: var(--text, #3d3c3c);
+}
+
+.sandbox-config .is-bad b {
+    color: #da1e28;
+}
+
+.sandbox-config .is-good b {
+    color: #0e6027;
+}
+
+.sandbox-config .mono {
+    color: #8c8c8c;
+    font-size: 11px;
+}
+
+.sandbox-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 16px;
+    padding: 14px 16px 16px;
+}
+
+.sandbox-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+}
+
+.sandbox-actions .button {
+    min-height: 36px;
+    font-size: 13px;
+}
+
+.sandbox-help {
+    display: block;
+    flex-basis: 100%;
+    gap: 6px;
+    margin: 4px 0 0;
+    color: #6f6f6f;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.sandbox-help svg {
+    margin: -2px 4px 0 0;
+    color: var(--accent, #29707a);
+}
+
+.sandbox-result {
+    padding: 12px 14px;
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+    background: #fafafa;
+}
+
+.sandbox-result-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: #525252;
+    font-size: 12px;
+}
+
+.sandbox-verdict {
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.sandbox-verdict.bad {
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.sandbox-verdict.good {
+    background: #defbe6;
+    color: #0e6027;
+}
+
+.sandbox-bars {
+    display: grid;
+    grid-template-columns: repeat(25, minmax(0, 1fr));
+    gap: 3px;
+}
+
+.sandbox-bars i {
+    height: 14px;
+    border-radius: 2px;
+    animation: sandbox-pop 0.35s ease-out both;
+}
+
+.sandbox-bars i.ok {
+    background: #42be65;
+}
+
+.sandbox-bars i.fail {
+    background: #da1e28;
+}
+
+.sandbox-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 10px;
+    font-size: 12px;
+}
+
+.sandbox-stats b {
+    font-weight: 500;
+}
+
+.sandbox-history {
+    display: grid;
+    gap: 3px;
+    margin: 10px 0 0;
+    padding: 8px 0 0;
+    border-top: 1px dashed #d9d9d9;
+    list-style: none;
+    font-size: 11px;
+}
+
+.sandbox-history li {
+    display: grid;
+    grid-template-columns: 60px 60px 90px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.sandbox-history .bad {
+    color: #a2191f;
+}
+
+.sandbox-history .good {
+    color: #0e6027;
+}
+
+.sandbox-history .muted {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sandbox-empty,
+.sandbox-note {
+    margin: 0;
+    color: #6f6f6f;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.sandbox-note {
+    padding: 12px 16px;
+}
+
+@media (max-width: 900px) {
+    .sandbox-body {
+        grid-template-columns: 1fr;
+    }
+
+    .sandbox-bars {
+        grid-template-columns: repeat(10, minmax(0, 1fr));
+    }
+}
+
+@keyframes sandbox-pop {
+    from {
+        opacity: 0;
+        transform: scaleY(0.2);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sandbox-bars i {
+        animation: none;
+    }
+}

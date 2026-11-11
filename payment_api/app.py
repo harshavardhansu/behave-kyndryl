@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import Lock
-from time import perf_counter
+from time import perf_counter, sleep
 from typing import Any, cast
 
 from fastapi import FastAPI, Request
@@ -42,6 +42,11 @@ class PaymentSettings:
     max_overflow: int = 0
     pool_timeout: int = 2
     hold_seconds: float = 0.3
+    local_mode: bool = False
+
+    @property
+    def is_sqlite(self) -> bool:
+        return make_url(self.database_url).get_backend_name() == "sqlite"
 
     @classmethod
     def from_environment(cls) -> "PaymentSettings":
@@ -55,11 +60,13 @@ class PaymentSettings:
             max_overflow=int(os.getenv("PAYMENT_DB_MAX_OVERFLOW", "0")),
             pool_timeout=int(os.getenv("PAYMENT_DB_POOL_TIMEOUT", "2")),
             hold_seconds=float(os.getenv("PAYMENT_DB_HOLD_SECONDS", "0.3")),
+            local_mode=os.getenv("PAYMENT_LOCAL_MODE", "") == "1",
         )
 
     def validate(self) -> None:
-        if make_url(self.database_url).get_backend_name() != "postgresql":
-            raise ValueError("The Payment API sandbox requires PostgreSQL; SQLite is not supported.")
+        backend = make_url(self.database_url).get_backend_name()
+        if backend != "postgresql" and not (self.local_mode and backend == "sqlite"):
+            raise ValueError("The Payment API sandbox requires PostgreSQL; SQLite is not supported outside local demo mode.")
         if self.release not in {"previous", "3.8.1"}:
             raise ValueError("Unsupported Payment API release.")
         if not 1 <= self.pool_size <= 100 or not 0 <= self.max_overflow <= 100:
@@ -106,12 +113,16 @@ def create_app(
 ) -> FastAPI:
     config = settings or PaymentSettings.from_environment()
     config.validate()
+    # Local demo mode uses a SQLite file but the SAME bounded QueuePool, so pool
+    # exhaustion behaves exactly like the PostgreSQL deployment.
     database = engine or create_engine(
         config.database_url,
+        poolclass=QueuePool,
         pool_size=config.pool_size,
         max_overflow=config.max_overflow,
         pool_timeout=config.pool_timeout,
         pool_pre_ping=True,
+        **({"connect_args": {"check_same_thread": False, "timeout": 30}} if config.is_sqlite else {}),
     )
     request_metrics = metrics or RequestMetrics()
 
@@ -222,10 +233,14 @@ def create_app(
         @application.get("/payments/summary")
         def payment_summary() -> dict[str, Any]:
             with database.connect() as connection:
-                connection.execute(
-                    text("SELECT pg_sleep(:hold_seconds)"),
-                    {"hold_seconds": config.hold_seconds},
-                )
+                # Hold the pooled connection for the calibrated time (simulates a slow query).
+                if config.is_sqlite:
+                    sleep(config.hold_seconds)
+                else:
+                    connection.execute(
+                        text("SELECT pg_sleep(:hold_seconds)"),
+                        {"hold_seconds": config.hold_seconds},
+                    )
                 total_count, successful_count, refunded_count, total_amount = connection.execute(
                     select(
                         func.count(Payment.id),

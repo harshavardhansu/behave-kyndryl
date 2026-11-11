@@ -1,0 +1,739 @@
+/* Agent mission control: human-in-the-loop decisions, iterations and live activity. */
+
+.mission-panel {
+    --mission-accent: var(--accent, #29707a);
+    border-bottom: 1px solid #e3e3e3;
+    background: #ffffff;
+    color: var(--text, #3d3c3c);
+}
+
+.mission-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 6px;
+    color: #525252;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* ---------- Empty state ---------- */
+
+.mission-empty {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px;
+    background: linear-gradient(100deg, #f4f8f8 0%, #ffffff 70%);
+}
+
+.mission-empty-copy {
+    display: flex;
+    flex: 1 1 420px;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.mission-empty-copy h4 {
+    margin: 0 0 3px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.mission-empty-copy p {
+    margin: 0;
+    color: #6f6f6f;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.mission-empty-icon {
+    display: grid;
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent-tint, #e6f0f1);
+    color: var(--mission-accent);
+    animation: mission-breathe 2.6s ease-in-out infinite;
+}
+
+.mission-empty .button-primary {
+    font-size: 14px;
+}
+
+/* ---------- Header ---------- */
+
+.mission-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eeeeee;
+}
+
+.mission-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.mission-title > svg {
+    color: var(--mission-accent);
+}
+
+.mission-title strong {
+    font-weight: 500;
+}
+
+.mission-title .mono {
+    color: #6f6f6f;
+    font-size: 11px;
+}
+
+.mission-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--mission-accent);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.mission-live i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--mission-accent);
+    animation: mission-ping 1.2s ease-out infinite;
+}
+
+.mission-iterations {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mission-iteration {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border: 1px solid #d9d9d9;
+    border-radius: 12px;
+    color: #8c8c8c;
+    font-size: 11px;
+}
+
+.mission-iteration.is-done {
+    border-color: #a7d7b5;
+    background: #defbe6;
+    color: #0e6027;
+}
+
+.mission-iteration.is-current {
+    border-color: var(--mission-accent);
+    background: var(--accent-tint, #e6f0f1);
+    color: var(--mission-accent);
+    font-weight: 500;
+    animation: mission-glow 2.2s ease-in-out infinite;
+}
+
+.mission-controls {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.mission-controls .button {
+    min-height: 32px;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+.mission-analysis {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin: 0;
+    padding: 9px 16px;
+    border-bottom: 1px solid #eeeeee;
+    background: #f8fafa;
+    color: #525252;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.mission-analysis svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--mission-accent);
+}
+
+/* ---------- Body ---------- */
+
+.mission-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+}
+
+.mission-main {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    padding: 14px 16px 16px;
+    border-right: 1px solid #eeeeee;
+}
+
+/* ---------- Human decision card ---------- */
+
+.mission-gate {
+    padding: 14px 16px;
+    border: 1px solid #f1c21b;
+    border-left: 4px solid #f1c21b;
+    border-radius: 4px;
+    background: #fffcf0;
+    animation: mission-pop 0.45s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.mission-gate.gate-fix {
+    border-color: #ff8f80;
+    border-left-color: #ff462d;
+    background: #fff7f5;
+}
+
+.mission-gate.gate-resolution {
+    border-color: #9fc9cf;
+    border-left-color: var(--mission-accent);
+    background: #f4f9fa;
+}
+
+.mission-gate-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mission-gate-icon {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    place-items: center;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #8e6a00;
+    box-shadow: 0 0 0 0 rgba(241, 194, 27, 0.5);
+    animation: mission-attention 1.8s ease-out infinite;
+}
+
+.gate-fix .mission-gate-icon {
+    color: #da1e28;
+    animation-name: mission-attention-red;
+}
+
+.gate-resolution .mission-gate-icon {
+    color: var(--mission-accent);
+    animation-name: mission-attention-teal;
+}
+
+.mission-gate-kicker {
+    color: #8e6a00;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.gate-fix .mission-gate-kicker {
+    color: #a2191f;
+}
+
+.gate-resolution .mission-gate-kicker {
+    color: var(--mission-accent);
+}
+
+.mission-gate h4 {
+    margin: 1px 0 0;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.mission-gate-detail {
+    margin: 10px 0 6px;
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.mission-gate-recommendation {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 10px;
+    color: #525252;
+    font-size: 12px;
+}
+
+.mission-gate-recommendation svg {
+    color: var(--mission-accent);
+}
+
+.mission-team-editor {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 4px 0 10px;
+}
+
+.mission-team-editor ul {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mission-team-editor li {
+    display: grid;
+    gap: 2px;
+    padding: 7px 9px;
+    border: 1px solid #e3e3e3;
+    border-left: 3px solid var(--mission-accent);
+    border-radius: 4px;
+    background: #ffffff;
+    animation: mission-slide 0.35s ease-out both;
+    transition: opacity 0.2s, border-color 0.2s;
+}
+
+.mission-team-editor li.is-off {
+    border-left-color: #c6c6c6;
+    opacity: 0.6;
+}
+
+.mission-team-editor label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mission-team-editor strong {
+    font-weight: 500;
+}
+
+.mission-team-editor small {
+    padding-left: 22px;
+    color: #6f6f6f;
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.mission-note {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    color: #525252;
+    font-size: 11px;
+}
+
+.mission-note input:not([type='checkbox']) {
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
+.mission-gate-blocked,
+.mission-gate-error {
+    margin: 0 0 10px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.mission-gate-blocked {
+    background: #f2f2f2;
+    color: #525252;
+}
+
+.mission-gate-error {
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.mission-gate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mission-gate-actions .button {
+    min-height: 36px;
+    font-size: 13px;
+}
+
+/* ---------- Working state ---------- */
+
+.mission-working {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px dashed #b9cfd2;
+    border-radius: 4px;
+    background: #f8fbfb;
+}
+
+.mission-working strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.mission-working small {
+    color: #6f6f6f;
+    font-size: 11px;
+}
+
+.mission-spinner {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    border: 3px solid var(--accent-tint, #e6f0f1);
+    border-top-color: var(--mission-accent);
+    border-radius: 50%;
+    animation: mission-spin 0.8s linear infinite;
+}
+
+/* ---------- Learnings ---------- */
+
+.mission-learnings ul {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mission-learnings li {
+    padding: 7px 10px;
+    border-left: 3px solid #8a3ffc;
+    border-radius: 0 4px 4px 0;
+    background: #f6f2ff;
+    font-size: 12px;
+    line-height: 1.45;
+    animation: mission-slide 0.35s ease-out both;
+}
+
+/* ---------- Activity feed ---------- */
+
+.mission-feed {
+    min-width: 0;
+    max-height: 420px;
+    overflow: auto;
+    padding: 14px 16px 16px;
+    scrollbar-width: thin;
+}
+
+.mission-feed ol {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    margin: 0;
+    padding: 0 0 0 14px;
+    list-style: none;
+}
+
+.mission-feed ol::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    left: 4px;
+    border-left: 2px dotted #c9d7d9;
+}
+
+.mission-feed li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 12px;
+    line-height: 1.45;
+    animation: mission-slide 0.4s ease-out both;
+}
+
+.mission-feed li::before {
+    content: '';
+    position: absolute;
+    top: 11px;
+    left: -14px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    background: #a8a8a8;
+    box-shadow: 0 0 0 1px #d0d0d0;
+}
+
+.mission-feed li:first-child::before {
+    animation: mission-ping-dot 1.6s ease-out infinite;
+}
+
+.mission-feed li.event-team-proposed::before,
+.mission-feed li.event-analysing::before {
+    background: #ff462d;
+}
+
+.mission-feed li.event-finding::before,
+.mission-feed li.event-step-started::before {
+    background: var(--mission-accent);
+}
+
+.mission-feed li[class*='approved']::before,
+.mission-feed li.event-resolved::before {
+    background: #24a148;
+}
+
+.mission-feed li[class*='rejected']::before,
+.mission-feed li.event-escalated::before,
+.mission-feed li.event-error::before {
+    background: #da1e28;
+}
+
+.mission-feed time {
+    color: #8c8c8c;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+}
+
+.mission-feed strong {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.mission-feed span {
+    color: #525252;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 900px) {
+    .mission-body {
+        grid-template-columns: 1fr;
+    }
+
+    .mission-main {
+        border-right: 0;
+        border-bottom: 1px solid #eeeeee;
+    }
+
+    .mission-team-editor {
+        grid-template-columns: 1fr;
+    }
+
+    .mission-controls {
+        margin-left: 0;
+    }
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes mission-pop {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes mission-slide {
+    from {
+        opacity: 0;
+        transform: translateX(-8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes mission-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes mission-ping {
+    0% {
+        box-shadow: 0 0 0 0 rgba(41, 112, 122, 0.6);
+    }
+
+    100% {
+        box-shadow: 0 0 0 8px rgba(41, 112, 122, 0);
+    }
+}
+
+@keyframes mission-ping-dot {
+    0% {
+        box-shadow: 0 0 0 1px #d0d0d0, 0 0 0 0 rgba(41, 112, 122, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 0 1px #d0d0d0, 0 0 0 8px rgba(41, 112, 122, 0);
+    }
+}
+
+@keyframes mission-attention {
+    0% {
+        box-shadow: 0 0 0 0 rgba(241, 194, 27, 0.6);
+    }
+
+    100% {
+        box-shadow: 0 0 0 12px rgba(241, 194, 27, 0);
+    }
+}
+
+@keyframes mission-attention-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 70, 45, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 0 12px rgba(255, 70, 45, 0);
+    }
+}
+
+@keyframes mission-attention-teal {
+    0% {
+        box-shadow: 0 0 0 0 rgba(41, 112, 122, 0.5);
+    }
+
+    100% {
+        box-shadow: 0 0 0 12px rgba(41, 112, 122, 0);
+    }
+}
+
+@keyframes mission-glow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(41, 112, 122, 0);
+    }
+
+    50% {
+        box-shadow: 0 0 0 3px rgba(41, 112, 122, 0.18);
+    }
+}
+
+@keyframes mission-breathe {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.08);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .mission-panel *,
+    .mission-panel *::before,
+    .mission-panel *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* ---------- AI usage meter and plan source ---------- */
+
+.mission-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.mission-usage {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    padding: 4px 10px 6px;
+    border: 1px solid var(--accent-line, #c9dfe2);
+    border-radius: 12px;
+    background: #ffffff;
+    color: var(--mission-accent);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.mission-usage i {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: var(--mission-accent);
+    transition: width 0.4s ease;
+}
+
+.mission-usage.is-high {
+    border-color: #f1c21b;
+    color: #8e6a00;
+}
+
+.mission-usage.is-high i {
+    background: #f1c21b;
+}
+
+.mission-usage.is-off {
+    border-color: #d9d9d9;
+    color: #6f6f6f;
+}
+
+.mission-source {
+    flex-shrink: 0;
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.mission-source.is-ai {
+    background: #e8daff;
+    color: #6929c4;
+}
+
+.mission-source.is-fallback {
+    background: #fcf4d6;
+    color: #8e6a00;
+}
+
+.mission-feed li.event-ai-fallback::before {
+    background: #f1c21b;
+}

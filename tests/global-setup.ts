@@ -27,7 +27,7 @@ export default async function globalSetup() {
   const python = resolve(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python')
   const backend = spawn(python, ['-m', 'uvicorn', 'backend.app:app', '--host', '127.0.0.1', '--port', '18001'], {
     stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, DATABASE_URL: 'sqlite:///:memory:', AGENTICA_MODE: 'demo', AGENTICA_DEMO_STEP_SECONDS: '1.2', AZURE_AI_PROJECT_ENDPOINT: '', AZURE_AI_MODEL_DEPLOYMENT: '' },
+    env: { ...process.env, DATABASE_URL: 'sqlite:///:memory:', AGENTICA_MODE: 'demo', AGENTICA_DEMO_STEP_SECONDS: '1.2', AZURE_AI_PROJECT_ENDPOINT: '', AZURE_AI_MODEL_DEPLOYMENT: '', AZURE_OPENAI_ENDPOINT: '', AZURE_OPENAI_API_KEY: '' },
   })
   const frontend = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'), 'preview', '--host', '127.0.0.1', '--port', '15173', '--strictPort'], {
     stdio: 'ignore', windowsHide: true, env: { ...process.env, AGENTICA_API_TARGET: 'http://127.0.0.1:18001' },
