@@ -1,0 +1,9 @@
+replicaCount: 6
+resources:
+  requests: { cpu: "1", memory: 1Gi }
+  limits:   { cpu: "2", memory: 2Gi }
+env:
+  SPRING_PROFILES_ACTIVE: production
+# Connection math: replicas x maximum-pool-size must stay within the checkout share of the
+# postgres-primary budget (150 of 200). v2.17: 6 x 30 = 180 (over budget at peak);
+# v2.18: 6 x 10 = 60 (within budget). 6 x 20 = 120 and 6 x 25 = 150 are also within budget.

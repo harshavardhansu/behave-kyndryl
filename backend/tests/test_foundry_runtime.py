@@ -102,7 +102,7 @@ def test_provisioning_creates_14_agents_and_is_idempotent(fake_azure):
     results = agents.provision()
     assert len(results) == 14 and all(item["action"] == "created" for item in results)
     assert {name for name, _, _ in project.created} == {agent_name(agent.role) for agent in get_all_agents()}
-    assert all("no tools" in instructions for _, instructions, _ in project.created)
+    assert all("read-only tools" in instructions for _, instructions, _ in project.created)
     again = agents.provision()
     assert all(item["action"] == "unchanged" for item in again) and len(project.created) == 14
     project.deleted.add("behave-logs")

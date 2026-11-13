@@ -147,3 +147,45 @@ The tests never call Azure: they use the simulated planner and a fake AI client.
 - The Payment API sandbox can also run in containers (`PAYMENT_SANDBOX_MODE=container`, see `compose.yaml`).
 
 More detail: [final_overview.md](final_overview.md) · [docs/architecture.md](docs/architecture.md) · [docs/implementation-roadmap.md](docs/implementation-roadmap.md)
+
+## Agents that investigate (read-only tools)
+
+The Foundry agents do not just read a summary: they look things up with **read-only tools** (`backend/investigation_tools.py`):
+`get_ticket`, `list_evidence`, `read_evidence` (full text of attached files), `search_logs` (evidence and live sandbox errors),
+`get_service_status`, `list_changes`, `list_repo_files` / `read_repo_file` (Payment API sandbox source only), `search_knowledge`.
+Tools can read only what belongs to the incident, cannot change anything, redact secrets, are size-capped (10 calls per agent),
+and every call is recorded and shown in the mission activity and in the PDF report.
+
+**Report:** *Incident → Reports → Download PDF* now produces a detailed investigation report from the mission record: the issue,
+the team and why, every tool call and finding, issues found vs solved, before/after measurements, human decisions and validation.
+A sample is in `docs/sample-reports/`.
+
+**Tests:** the normal tests use a stand-in for Azure (free, offline). To run one real mission against your Foundry agents:
+`RUN_LIVE_FOUNDRY=1 .venv/bin/python -m pytest backend/tests/test_live_foundry.py -s` (needs the agents provisioned and `python -m backend.azure_login`; costs a few cents).
+After changing agent prompts or tools, re-run `python -m backend.foundry_provision` to update them in Foundry.
+
+## Deploying to Azure
+
+One container runs the website, the API, the mission engine and the Payment API sandbox (`deploy/app.Containerfile`).
+
+```
+Browser ──HTTPS──▶ Entra sign-in (Container Apps authentication)
+                        │  only accounts from your tenant
+                        ▼
+               Azure Container Apps, 1 replica (West US 3)
+               website + API + missions + Payment sandbox
+                 │ managed identity (no keys)        │ Azure Files mount
+                 ▼                                   ▼
+        Azure AI Foundry (14 agents + model)   SQLite workspace (/mnt/data)
+   Container Registry ◀── image built by `az acr build` / GitHub Actions
+   Log Analytics      ◀── container logs
+```
+
+- **Deploy or update:** `az login`, then `./deploy/azure/deploy.sh` (safe to re-run).
+- **Pipeline:** `./deploy/azure/github-oidc.sh` once; afterwards every push to `main` runs the tests, builds the image and rolls it out (`.github/workflows/deploy.yml`). GitHub holds no Azure password: it signs in with a federated credential trusted only for `main`.
+- **Smoke test in the cloud:** `az containerapp exec -g <group> -n behave-kyndryl --command "python -m backend.cloud_smoke INC-1043"` runs one real mission inside the container.
+- **Sign-in:** only accounts in your Entra tenant can open the site. The app also checks the signed-in user header on every request (forged headers are stripped by Azure), so the demo personas are never reachable anonymously. `/api/v1/health` is the only open path.
+- **Foundry access:** the app's managed identity has the *Azure AI User* role (shown as *Foundry User*) on the Foundry resource; on first start the app creates the agents itself.
+- **Database:** SQLite on an Azure file share, because the lab subscription does not allow the small PostgreSQL size. Data survives restarts and redeploys. The app needs exactly one replica anyway (missions run inside the process).
+- **Cost (approximate):** the always-on container (1 vCPU, 2 GiB) is the main cost, roughly $70 a month; the registry about $5; storage and logs a few dollars. To save credit between demos, scale it to zero:
+  `az containerapp update -g <group> -n behave-kyndryl --min-replicas 0 --max-replicas 1` (first request then takes ~20 s), or delete the resources after the hackathon.

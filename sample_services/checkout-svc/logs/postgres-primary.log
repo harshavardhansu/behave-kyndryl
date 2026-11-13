@@ -1,0 +1,5 @@
+2026-10-30T09:30:00.000Z LOG:  connections: active=118 idle=40 max_connections=200 (checkout=60 order-history=40 admin=4)
+2026-10-30T09:45:00.000Z LOG:  connections: active=104 idle=12 max_connections=200 (checkout=60 order-history=40 admin=4)
+2026-10-30T09:45:00.000Z LOG:  checkpoint complete: wrote 1840 buffers (2.1%); 0 WAL file(s) added
+2026-10-30T10:00:00.000Z LOG:  connections: active=104 idle=10 max_connections=200 (checkout=60 order-history=40 admin=4)
+2026-10-30T10:00:00.000Z LOG:  database load: cpu=31% io_wait=2% slow_queries(>500ms)=0  (the database itself is not saturated)

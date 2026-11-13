@@ -28,6 +28,7 @@ from .data_governance import DataPolicyError, authorize_model_context
 from .domain import Settings, redact
 from .foundry_agents import AGENTS_CATALOG, get_agent
 from .foundry_runtime import FoundryAgentService, agent_instructions, agent_name, extract_json
+from .investigation_tools import InvestigationTools
 from .mission import MAX_ITERATIONS, ROLE_INFO, SPECIALISTS, SimulatedBrain
 from .store import Store
 
@@ -109,7 +110,7 @@ PLAN_TASK = (
 )
 
 WORK_TASK = (
-    "TASK: write your finding for your assigned task: 1-3 specific sentences based ONLY on the ticket, the evidence and earlier findings, "
+    "TASK: write your finding for your assigned task: 1-3 specific sentences based ONLY on the ticket, the evidence, earlier findings and what your read-only tools returned (use the tools to check facts first), "
     "the evidence IDs that support it, and a calibrated confidence between 0 and 1. Never invent logs, metrics, test results or deployments; "
     "if evidence is missing, say what is missing. A remediation finding proposes a fix and a rollback plan for human review. "
     "A release finding only records that a human-approved release is ready. " + SAFETY
@@ -138,6 +139,8 @@ class FoundryBrain:
         self.budget = AIBudget(store, settings)
         self.agents = FoundryAgentService(settings, store)
         self.fallback = SimulatedBrain()
+        self.store = store
+        self.sandbox = None  # set by the app so tools can read the live Payment API sandbox (read-only)
 
     @property
     def mode(self) -> str:
@@ -175,7 +178,7 @@ class FoundryBrain:
         self.budget.hit()
         return result
 
-    def _call(self, purpose: str, task: str, payload: dict, schema: type[BaseModel], context: dict, role: str | None = None) -> tuple[BaseModel, str]:
+    def _call(self, purpose: str, task: str, payload: dict, schema: type[BaseModel], context: dict, role: str | None = None, tools: InvestigationTools | None = None) -> tuple[BaseModel, str]:
         """One AI call. Returns (validated answer, label of who answered)."""
         self._authorize(context)
         payload = redact(payload)
@@ -185,16 +188,22 @@ class FoundryBrain:
             else f"Azure OpenAI {self.settings.azure_ai_model_deployment}"
         )
         key = AIBudget.cache_key(purpose + (f":agent:{role}" if use_agent else ""), payload, self.settings.azure_ai_model_deployment)
-        cached = self._cached(key, schema)
+        cached = self._cached(key, schema) if tools is None else None  # an investigation must really look things up
         if cached is not None:
             return cached, label
         self.budget.reserve()
         if use_agent:
-            text, tokens_in, tokens_out = self.agents.run(role, {"task": task, **payload}, schema.model_json_schema())
-            try:
-                result = schema.model_validate_json(extract_json(text))
-            except ValidationError:
-                raise AIUnavailable(f"The Foundry agent {agent_name(role)} returned an answer in the wrong format.") from None
+            result, tokens_in, tokens_out = None, 0, 0
+            for attempt in (1, 2):  # an occasional malformed answer is retried once before falling back
+                text, used_in, used_out = self.agents.run(role, {"task": task, **payload}, schema.model_json_schema(), tools if use_agent else None)
+                tokens_in, tokens_out = tokens_in + used_in, tokens_out + used_out
+                try:
+                    result = schema.model_validate_json(extract_json(text))
+                    break
+                except (ValidationError, AIUnavailable) as error:
+                    logger.warning("Foundry agent %s attempt %d gave an invalid answer: %s | raw: %s", role, attempt, str(error)[:400].replace("\n", " "), text[:400].replace("\n", " "))
+                    if attempt == 2:
+                        raise AIUnavailable(f"The Foundry agent {agent_name(role)} returned an answer in the wrong format.") from None
         else:
             agent = get_agent(role) if role else AGENTS_CATALOG["orchestrator"]
             instructions = (agent_instructions(agent) + "\n\n" if agent else "") + task
@@ -265,7 +274,7 @@ class FoundryBrain:
 
     def _clean_finding(self, item: AgentFinding | Finding, available: set[str], label: str) -> dict:
         return {
-            "summary": _clip(item.summary, 500) or "No finding returned.",
+            "summary": _clip(item.summary, 900) or "No finding returned.",
             "evidenceIds": [value for value in dict.fromkeys(item.evidence_ids) if value in available][:6],
             "confidence": round(min(max(float(item.confidence), 0.0), 1.0), 2),
             "source": f"AI-GENERATED / {label}",
@@ -283,8 +292,11 @@ class FoundryBrain:
 
         def run_agent(member: dict):
             payload = {**base, "step": step, "your_role": member["role"], "your_task": _clip(member["task"], 300), "earlier_findings": earlier}
-            answer, label = self._call(f"work:{step}:{member['role']}", WORK_TASK, payload, AgentFinding, context, role=member["role"])
-            return member["role"], self._clean_finding(answer, available, label)
+            tools = InvestigationTools(self.store.read(), context["incident"], self.sandbox)
+            answer, label = self._call(f"work:{step}:{member['role']}", WORK_TASK, payload, AgentFinding, context, role=member["role"], tools=tools)
+            value = self._clean_finding(answer, available, label)
+            value["toolCalls"] = tools.trail
+            return member["role"], value
 
         if agent_members:
             with ThreadPoolExecutor(max_workers=min(len(agent_members), 4)) as pool:

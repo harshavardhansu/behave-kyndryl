@@ -1,0 +1,6 @@
+ruleset: v40
+steps:
+  - { name: velocity_check, mode: cached }
+  - { name: amount_anomaly, mode: cached }
+cache_key: "${card_hash}"
+budget_ms: 300

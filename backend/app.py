@@ -1,4 +1,5 @@
 import csv
+import logging
 from pathlib import Path
 import os
 import hashlib
@@ -9,14 +10,14 @@ import secrets
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from threading import Lock
+from threading import Lock, Thread
 from time import monotonic
 from typing import Annotated, Literal
 
 import jwt
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import Field, ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -37,6 +38,7 @@ from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
 from .sandbox_records import record_measurement
 from .repo_analyzer import analyze_github_file, generate_repository_findings
 from .resolution_report import generate_resolution_report
+from .mission_report import generate_mission_report_pdf, pick_mission
 from .pdf_generator import generate_incident_resolution_pdf, generate_repo_analysis_pdf
 
 
@@ -89,8 +91,20 @@ class RepositoryInput(StrictModel):
     permissionConfirmed: Literal[True]
 
 
+def _configure_logging() -> None:
+    """Show the app's own messages (behave.*: Foundry sync, agent fallbacks) in the container logs."""
+    logger = logging.getLogger("behave")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+
 def create_app(settings: Settings | None = None, store: Store | None = None, sandbox_control: PaymentSandboxControl | None = None) -> FastAPI:
     config = settings or Settings()
+    _configure_logging()
     if config.mode == "production":
         if make_url(config.database_url).get_backend_name() != "postgresql" or (store is not None and store.engine.dialect.name != "postgresql"):
             raise RuntimeError("Production requires PostgreSQL. SQLite is limited to local demonstration and isolated testing.")
@@ -122,6 +136,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     audit(state, {"name": "System", "role": "Recovery"}, "Payment sandbox operation requires review", operation["id"], outcome="MANUAL_INTERVENTION_REQUIRED")
             pause_interrupted(state)
         database.mutate(recover)
+        if config.foundry_auto_sync and isinstance(application.state.mission_brain, FoundryBrain) and not database.read().get("foundryAgents"):
+            def sync_agents() -> None:
+                try:
+                    results = application.state.mission_brain.agents.provision()
+                    logging.getLogger("behave.foundry").warning("Foundry auto-sync: %d agents ready (%s).", len(results), ", ".join(sorted({item["action"] for item in results})))
+                except Exception as error:  # noqa: BLE001 - reported in the logs and the Foundry agents tab
+                    logging.getLogger("behave.foundry").warning("Foundry auto-sync failed: %s", error)
+
+            Thread(target=sync_agents, name="foundry-auto-sync", daemon=True).start()
         yield
         control = application.state.sandbox_control
         if isinstance(control, LocalPaymentSandbox):
@@ -145,6 +168,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         LocalPaymentSandbox() if os.getenv("PAYMENT_SANDBOX_MODE", "local") == "local" else PaymentSandboxControlAdapter()
     )
     application.state.mission_tools = MissionTools(application.state.sandbox_control) if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None
+    if hasattr(application.state.mission_brain, "sandbox") and isinstance(application.state.sandbox_control, LocalPaymentSandbox):
+        application.state.mission_brain.sandbox = application.state.sandbox_control
     sandbox_operation_lock = Lock()
     rate_buckets: dict[str, deque] = defaultdict(deque)
     jwks = jwt.PyJWKClient(f"https://login.microsoftonline.com/{config.azure_tenant_id}/discovery/v2.0/keys", cache_keys=True, timeout=5) if config.mode == "production" else None
@@ -153,7 +178,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     async def guard(request: Request, call_next):
         host = request.url.hostname or ""
         if config.mode == "demo" and host not in {"localhost", "127.0.0.1", "::1", "testserver"}:
-            return JSONResponse(status_code=403, content={"detail": "Demo access is restricted to loopback hosts."})
+            extra_hosts = {item.strip().lower() for item in config.demo_hosts.split(",") if item.strip()}
+            if host.lower() not in extra_hosts or not config.require_platform_auth:
+                return JSONResponse(status_code=403, content={"detail": "Demo access is restricted to loopback hosts."})
+            # Behind Azure Container Apps sign-in: every request except the health probe must carry the
+            # signed-in user that the platform adds (and strips from client requests).
+            if request.url.path != "/api/v1/health" and not request.headers.get("x-ms-client-principal-id"):
+                return JSONResponse(status_code=401, content={"detail": "Sign in required."})
         origin = request.headers.get("origin", "")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
             allowed = origin in config.allowed_origins.split(",") or (config.mode == "demo" and re.fullmatch(r"http://(?:localhost|127\.0\.0\.1):\d+", origin))
@@ -242,7 +273,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         token, csrf = secrets.token_urlsafe(48), secrets.token_urlsafe(32)
         result = {"user": persona(payload.role), "csrf": csrf, "mode": "demo", "workspace": "Northstar Commerce"}
         database.save_session(hashlib.sha256(token.encode()).hexdigest(), {**result, "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()})
-        response.set_cookie("agentica_session", token, httponly=True, samesite="strict", max_age=28_800, path="/api")
+        response.set_cookie("agentica_session", token, httponly=True, samesite="strict", max_age=28_800, path="/api", secure=config.secure_cookies)
         database.mutate(lambda state: audit(state, result["user"], "Demo identity selected", payload.role))
         return result
 
@@ -253,7 +284,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.post("/api/v1/auth/logout")
     def logout(request: Request, response: Response, auth: Auth):
         database.delete_session(hashlib.sha256(request.cookies.get("agentica_session", "").encode()).hexdigest())
-        response.delete_cookie("agentica_session", path="/api")
+        response.delete_cookie("agentica_session", path="/api", secure=config.secure_cookies)
         database.mutate(lambda state: audit(state, auth["user"], "Signed out", auth["user"]["id"]))
         return {"message": "Signed out."}
 
@@ -845,7 +876,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         require(auth["user"], "export")
         state = database.read()
         incident = find(state, "incidents", incident_id)
-        pdf_bytes = generate_incident_resolution_pdf(incident, state)
+        mission = pick_mission(state, incident_id)
+        pdf_bytes = generate_mission_report_pdf(incident, mission, state) if mission else generate_incident_resolution_pdf(incident, state)
         database.mutate(lambda s: audit(s, auth["user"], "Resolution report PDF exported", incident_id))
         return Response(
             pdf_bytes,
@@ -871,6 +903,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         incident_ids = {record["id"] for record in incidents}
         report = {"mode": state["mode"], "generatedAt": now(), "snapshotAt": state["snapshotAt"], "notice": "Synthetic workspace data is not production performance. Manually entered records retain their own provenance.", "environment": payload.environment, "incidents": incidents, "evidence": [record for record in state["evidence"] if record["incidentId"] in incident_ids], "changes": [record for record in state["changes"] if record["incidentId"] in incident_ids], "tests": [record for record in state["tests"] if record["incidentId"] in incident_ids], "audit": [record for record in state["audit"] if record["correlationId"] in incident_ids]}
         return Response(json.dumps(report, indent=2), media_type="application/json", headers={"Content-Disposition": 'attachment; filename="Behave-Kyndryl-incident-report.json"'})
+
+    static_root = Path(config.static_dir).resolve()
+    if (static_root / "index.html").is_file():
+        # Serve the built React site from the same origin as the API (cloud deployment).
+        @application.get("/{full_path:path}", include_in_schema=False)
+        def website(full_path: str):
+            if full_path.startswith("api/"):
+                raise HTTPException(404, "Not found")
+            candidate = (static_root / full_path).resolve()
+            if full_path and candidate.is_file() and candidate.is_relative_to(static_root):
+                return FileResponse(candidate)
+            return FileResponse(static_root / "index.html")
 
     return application
 

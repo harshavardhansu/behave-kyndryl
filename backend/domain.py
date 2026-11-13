@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     ai_daily_call_limit: int = Field(40, validation_alias="AGENTICA_AI_DAILY_CALL_LIMIT", ge=0, le=10_000)
     ai_max_output_tokens: int = Field(900, validation_alias="AGENTICA_AI_MAX_OUTPUT_TOKENS", ge=100, le=4_000)
     agent_mode: Literal["auto", "foundry", "model"] = Field("auto", validation_alias="AGENTICA_AGENT_MODE")
+    secure_cookies: bool = Field(False, validation_alias="AGENTICA_SECURE_COOKIES")  # True behind HTTPS (cloud)
+    foundry_auto_sync: bool = Field(False, validation_alias="AGENTICA_FOUNDRY_AUTO_SYNC")  # create agents on startup if none are recorded
+    static_dir: str = Field("dist", validation_alias="AGENTICA_STATIC_DIR")  # built website served by the backend
+    # Demo mode is loopback-only. A cloud deployment may add its own host name here, but only behind a
+    # platform sign-in (Azure Container Apps authentication), which the app then also checks per request.
+    demo_hosts: str = Field("", validation_alias="AGENTICA_DEMO_HOSTS")
+    require_platform_auth: bool = Field(False, validation_alias="AGENTICA_REQUIRE_PLATFORM_AUTH")
 
 
 def now() -> str:

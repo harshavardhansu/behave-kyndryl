@@ -823,6 +823,10 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
     for member in members:
         result = findings.get(member["role"]) or {"summary": "No finding returned.", "evidenceIds": [], "confidence": 0.0}
         member.update(status="Completed", completedAt=now(), findings=redact(result))
+        calls = result.get("toolCalls") or []
+        if calls:
+            looked = "; ".join(f"{call['tool']}({', '.join(str(v) for v in call['arguments'].values())}) → {call['found']}" for call in calls[:6])
+            _event(mission, "investigation", f"{member['name']} investigated with {len(calls)} read-only tool call{'s' if len(calls) != 1 else ''}: {looked}", actor=member["name"], role=member["role"])
         _event(mission, "finding", f"{member['name']}: {result['summary']}", actor=member["name"], role=member["role"])
     mission["cursor"] = {"step": step_index + 1, "phase": "start"}
     next_names = next((name for sid, name, _ in STEPS[step_index + 1:] if any(STEP_OF[role] == sid for role in team_roles)), None)

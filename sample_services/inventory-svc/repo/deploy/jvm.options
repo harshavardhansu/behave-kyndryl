@@ -1,0 +1,3 @@
+-Xms1g
+-Xmx2g
+-XX:+UseParallelGC              # stop-the-world collector; long pauses with large heaps

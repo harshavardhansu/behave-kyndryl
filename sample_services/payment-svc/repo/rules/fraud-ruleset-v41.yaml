@@ -1,0 +1,11 @@
+ruleset: v41
+rollout: { stage: 1, regions: [eu-west-1] }
+steps:
+  - name: velocity_check
+    mode: cached
+  - name: device_fingerprint_lookup      # NEW in v41
+    mode: synchronous                   # blocks scoring until the fingerprint service answers (p95 190 ms)
+    cache_key: "${card_hash}:${device_fingerprint}"   # v40 key was "${card_hash}" -> far fewer cache hits
+  - name: amount_anomaly
+    mode: cached
+budget_ms: 300

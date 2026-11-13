@@ -138,3 +138,49 @@ def test_pdf_report_endpoints(client):
     assert len(res_pdf.content) > 1000
 
 
+
+
+def test_backend_serves_the_built_site_without_shadowing_the_api(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from backend.app import create_app
+    from backend.domain import Settings
+    from backend.store import Store
+
+    (tmp_path / "index.html").write_text("<html>site</html>")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "app.js").write_text("console.log(1)")
+    (tmp_path.parent / "secret.txt").write_text("nope")
+    application = create_app(Settings(AGENTICA_MODE="demo", AGENTICA_STATIC_DIR=str(tmp_path)), Store("sqlite:///:memory:"))
+    with TestClient(application) as client:
+        assert client.get("/").text == "<html>site</html>"
+        assert client.get("/incidents/INC-1042").text == "<html>site</html>"  # client-side routes get the app
+        assert client.get("/assets/app.js").text == "console.log(1)"
+        assert "nope" not in client.get("/../secret.txt").text and "nope" not in client.get("/%2e%2e/secret.txt").text
+        assert client.get("/api/v1/health").json()["status"] == "ok"
+        assert client.get("/api/v1/does-not-exist").status_code == 404
+
+
+def test_demo_mode_on_a_cloud_host_requires_platform_sign_in():
+    from fastapi.testclient import TestClient
+
+    from backend.app import create_app
+    from backend.domain import Settings
+    from backend.store import Store
+
+    def client(**extra):
+        settings = Settings(AGENTICA_MODE="demo", AGENTICA_STATIC_DIR="/nonexistent", **extra)
+        return TestClient(create_app(settings, Store("sqlite:///:memory:")), base_url="https://demo.example.net")
+
+    with client() as plain:  # not listed: still loopback-only
+        assert plain.get("/api/v1/health").status_code == 403
+    with client(AGENTICA_DEMO_HOSTS="demo.example.net") as listed_without_auth:  # listing alone is not enough
+        assert listed_without_auth.get("/api/v1/health").status_code == 403
+    with client(AGENTICA_DEMO_HOSTS="demo.example.net", AGENTICA_REQUIRE_PLATFORM_AUTH=True) as cloud:
+        assert cloud.get("/api/v1/health").status_code == 200  # the platform health probe
+        assert cloud.post("/api/v1/auth/demo", json={"role": "Administrator"}).status_code == 401  # no signed-in user
+        signed_in = {"X-MS-CLIENT-PRINCIPAL-ID": "00000000-0000-0000-0000-000000000001", "X-MS-CLIENT-PRINCIPAL-NAME": "user@example.net"}
+        assert cloud.post("/api/v1/auth/demo", json={"role": "Incident Manager"}, headers=signed_in).status_code == 200
+    with client(AGENTICA_DEMO_HOSTS="demo.example.net", AGENTICA_REQUIRE_PLATFORM_AUTH=True) as cloud:
+        other = TestClient(cloud.app, base_url="https://evil.example.org")
+        assert other.get("/api/v1/health").status_code == 403  # other host names stay blocked

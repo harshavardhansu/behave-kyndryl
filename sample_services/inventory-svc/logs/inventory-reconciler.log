@@ -1,0 +1,451 @@
+2026-10-30T06:00:05.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1526 duration=3s
+2026-10-30T06:00:08.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2173 duration=6s
+2026-10-30T06:00:12.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:00:12.000Z WARN  inventory-reconciler-4 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #1
+2026-10-30T06:00:21.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1590 duration=9s
+2026-10-30T06:00:30.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1226 duration=4s
+2026-10-30T06:00:37.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1128 duration=4s
+2026-10-30T06:00:43.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2047 duration=5s
+2026-10-30T06:00:47.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1055 duration=4s
+2026-10-30T06:00:50.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2124 duration=8s
+2026-10-30T06:00:58.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1198 duration=8s
+2026-10-30T06:01:05.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1172 duration=6s
+2026-10-30T06:01:08.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1501 duration=7s
+2026-10-30T06:01:11.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1360 duration=6s
+2026-10-30T06:01:13.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2022 duration=4s
+2026-10-30T06:01:19.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1912 duration=4s
+2026-10-30T06:01:24.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1362 duration=6s
+2026-10-30T06:01:29.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=925 duration=5s
+2026-10-30T06:01:34.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2153 duration=6s
+2026-10-30T06:01:43.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2063 duration=4s
+2026-10-30T06:01:51.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1962 duration=7s
+2026-10-30T06:01:59.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1692 duration=8s
+2026-10-30T06:02:05.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1645 duration=9s
+2026-10-30T06:02:11.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1380 duration=5s
+2026-10-30T06:02:18.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1175 duration=5s
+2026-10-30T06:02:23.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1097 duration=9s
+2026-10-30T06:02:32.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2137 duration=4s
+2026-10-30T06:02:39.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2034 duration=9s
+2026-10-30T06:02:44.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1008 duration=6s
+2026-10-30T06:02:53.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1032 duration=4s
+2026-10-30T06:02:55.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2231 duration=3s
+2026-10-30T06:03:02.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1202 duration=3s
+2026-10-30T06:03:09.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1465 duration=7s
+2026-10-30T06:03:15.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 9.4s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:03:23.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1173 duration=6s
+2026-10-30T06:03:28.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2002 duration=8s
+2026-10-30T06:03:34.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1376 duration=7s
+2026-10-30T06:03:42.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2005 duration=8s
+2026-10-30T06:03:49.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2148 duration=3s
+2026-10-30T06:03:56.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 11.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:03:56.000Z WARN  inventory-reconciler-5 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #2
+2026-10-30T06:03:59.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1230 duration=8s
+2026-10-30T06:04:04.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2131 duration=9s
+2026-10-30T06:04:08.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=960 duration=8s
+2026-10-30T06:04:17.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 6.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:04:25.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2303 duration=6s
+2026-10-30T06:04:33.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1183 duration=9s
+2026-10-30T06:04:40.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1096 duration=5s
+2026-10-30T06:04:47.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1781 duration=5s
+2026-10-30T06:04:56.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1277 duration=5s
+2026-10-30T06:05:04.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1364 duration=5s
+2026-10-30T06:05:07.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1825 duration=9s
+2026-10-30T06:05:10.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2141 duration=3s
+2026-10-30T06:05:12.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1245 duration=3s
+2026-10-30T06:05:14.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1569 duration=6s
+2026-10-30T06:05:20.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2063 duration=7s
+2026-10-30T06:05:27.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1253 duration=4s
+2026-10-30T06:05:36.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1996 duration=4s
+2026-10-30T06:05:43.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2299 duration=4s
+2026-10-30T06:05:50.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 8.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:05:54.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 10.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:05:54.000Z WARN  inventory-reconciler-5 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #3
+2026-10-30T06:05:56.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 9.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:05:59.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1496 duration=3s
+2026-10-30T06:06:06.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 9.0s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:06:09.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:06:16.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2022 duration=9s
+2026-10-30T06:06:24.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2269 duration=7s
+2026-10-30T06:06:27.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1404 duration=5s
+2026-10-30T06:06:31.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1905 duration=4s
+2026-10-30T06:06:39.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1633 duration=3s
+2026-10-30T06:06:48.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2110 duration=3s
+2026-10-30T06:06:51.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1979 duration=7s
+2026-10-30T06:06:59.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1478 duration=5s
+2026-10-30T06:07:03.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1499 duration=8s
+2026-10-30T06:07:11.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1068 duration=6s
+2026-10-30T06:07:13.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:07:21.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1919 duration=9s
+2026-10-30T06:07:27.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1980 duration=9s
+2026-10-30T06:07:29.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1082 duration=5s
+2026-10-30T06:07:33.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=998 duration=7s
+2026-10-30T06:07:35.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1520 duration=6s
+2026-10-30T06:07:40.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2001 duration=3s
+2026-10-30T06:07:48.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1265 duration=7s
+2026-10-30T06:07:55.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1339 duration=3s
+2026-10-30T06:08:04.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1353 duration=8s
+2026-10-30T06:08:11.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1316 duration=6s
+2026-10-30T06:08:16.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=931 duration=3s
+2026-10-30T06:08:24.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1138 duration=5s
+2026-10-30T06:08:26.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2250 duration=9s
+2026-10-30T06:08:33.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1698 duration=9s
+2026-10-30T06:08:38.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1723 duration=3s
+2026-10-30T06:08:42.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2126 duration=4s
+2026-10-30T06:08:48.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2182 duration=5s
+2026-10-30T06:08:53.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1458 duration=6s
+2026-10-30T06:08:55.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1672 duration=5s
+2026-10-30T06:09:00.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=921 duration=8s
+2026-10-30T06:09:08.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1819 duration=4s
+2026-10-30T06:09:13.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2205 duration=3s
+2026-10-30T06:09:16.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1900 duration=3s
+2026-10-30T06:09:20.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1425 duration=8s
+2026-10-30T06:09:28.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1998 duration=5s
+2026-10-30T06:09:34.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1144 duration=6s
+2026-10-30T06:09:39.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2036 duration=9s
+2026-10-30T06:09:48.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1160 duration=7s
+2026-10-30T06:09:50.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1128 duration=4s
+2026-10-30T06:09:52.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.2s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:09:52.000Z WARN  inventory-reconciler-4 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #4
+2026-10-30T06:09:55.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1792 duration=7s
+2026-10-30T06:10:02.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1805 duration=7s
+2026-10-30T06:10:04.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1287 duration=9s
+2026-10-30T06:10:09.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2064 duration=3s
+2026-10-30T06:10:13.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1413 duration=4s
+2026-10-30T06:10:20.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:10:28.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:10:31.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1276 duration=8s
+2026-10-30T06:10:36.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2247 duration=8s
+2026-10-30T06:10:45.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1802 duration=3s
+2026-10-30T06:10:50.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2040 duration=4s
+2026-10-30T06:10:54.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1016 duration=3s
+2026-10-30T06:10:57.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=935 duration=7s
+2026-10-30T06:11:01.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1658 duration=3s
+2026-10-30T06:11:05.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2301 duration=4s
+2026-10-30T06:11:07.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 6.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:11:15.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 7.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:11:17.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=940 duration=8s
+2026-10-30T06:11:26.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1478 duration=8s
+2026-10-30T06:11:34.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1386 duration=8s
+2026-10-30T06:11:43.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2203 duration=6s
+2026-10-30T06:11:52.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1830 duration=7s
+2026-10-30T06:11:59.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1195 duration=5s
+2026-10-30T06:12:03.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1228 duration=5s
+2026-10-30T06:12:05.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1194 duration=3s
+2026-10-30T06:12:14.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2008 duration=9s
+2026-10-30T06:12:19.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:12:24.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1755 duration=6s
+2026-10-30T06:12:33.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1849 duration=5s
+2026-10-30T06:12:40.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2262 duration=6s
+2026-10-30T06:12:44.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1403 duration=4s
+2026-10-30T06:12:49.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 10.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:12:49.000Z WARN  inventory-reconciler-5 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #5
+2026-10-30T06:12:56.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1736 duration=5s
+2026-10-30T06:13:02.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1704 duration=4s
+2026-10-30T06:13:11.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2011 duration=8s
+2026-10-30T06:13:20.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2177 duration=6s
+2026-10-30T06:13:22.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1344 duration=5s
+2026-10-30T06:13:26.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1959 duration=6s
+2026-10-30T06:13:30.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:13:34.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2293 duration=7s
+2026-10-30T06:13:38.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1305 duration=4s
+2026-10-30T06:13:46.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1859 duration=4s
+2026-10-30T06:13:50.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2154 duration=7s
+2026-10-30T06:13:52.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 6.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:13:54.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1008 duration=5s
+2026-10-30T06:13:57.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1630 duration=4s
+2026-10-30T06:14:01.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1529 duration=9s
+2026-10-30T06:14:04.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2176 duration=5s
+2026-10-30T06:14:13.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1258 duration=5s
+2026-10-30T06:14:19.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2050 duration=4s
+2026-10-30T06:14:23.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1750 duration=3s
+2026-10-30T06:14:31.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2050 duration=7s
+2026-10-30T06:14:40.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1410 duration=3s
+2026-10-30T06:14:44.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 6.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:14:52.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1249 duration=9s
+2026-10-30T06:14:54.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1642 duration=6s
+2026-10-30T06:14:58.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1907 duration=8s
+2026-10-30T06:15:05.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1074 duration=5s
+2026-10-30T06:15:08.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1176 duration=7s
+2026-10-30T06:15:14.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1206 duration=3s
+2026-10-30T06:15:19.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1070 duration=5s
+2026-10-30T06:15:28.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2173 duration=7s
+2026-10-30T06:15:36.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1647 duration=9s
+2026-10-30T06:15:42.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1951 duration=5s
+2026-10-30T06:15:44.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1241 duration=3s
+2026-10-30T06:15:49.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1819 duration=6s
+2026-10-30T06:15:56.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1458 duration=8s
+2026-10-30T06:16:05.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 9.2s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:16:09.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 9.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:16:15.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 8.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:16:23.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2276 duration=5s
+2026-10-30T06:16:31.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1651 duration=9s
+2026-10-30T06:16:39.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1171 duration=5s
+2026-10-30T06:16:45.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 7.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:16:48.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1073 duration=9s
+2026-10-30T06:16:55.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=947 duration=9s
+2026-10-30T06:16:59.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1397 duration=3s
+2026-10-30T06:17:03.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1033 duration=4s
+2026-10-30T06:17:08.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1054 duration=3s
+2026-10-30T06:17:10.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2164 duration=3s
+2026-10-30T06:17:14.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1843 duration=8s
+2026-10-30T06:17:21.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 7.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:17:25.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1066 duration=4s
+2026-10-30T06:17:28.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=907 duration=6s
+2026-10-30T06:17:33.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1002 duration=8s
+2026-10-30T06:17:36.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1984 duration=4s
+2026-10-30T06:17:45.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1914 duration=7s
+2026-10-30T06:17:49.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2284 duration=7s
+2026-10-30T06:17:51.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 6.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:17:55.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1439 duration=4s
+2026-10-30T06:18:00.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 10.2s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:18:00.000Z WARN  inventory-reconciler-6 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #6
+2026-10-30T06:18:05.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1558 duration=9s
+2026-10-30T06:18:10.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1708 duration=8s
+2026-10-30T06:18:16.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2211 duration=5s
+2026-10-30T06:18:21.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1606 duration=8s
+2026-10-30T06:18:26.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 10.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:18:26.000Z WARN  inventory-reconciler-5 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #7
+2026-10-30T06:18:32.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1230 duration=3s
+2026-10-30T06:18:34.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1911 duration=5s
+2026-10-30T06:18:36.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1780 duration=3s
+2026-10-30T06:18:45.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2281 duration=3s
+2026-10-30T06:18:52.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1640 duration=8s
+2026-10-30T06:18:55.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1553 duration=6s
+2026-10-30T06:19:02.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1658 duration=6s
+2026-10-30T06:19:08.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1289 duration=4s
+2026-10-30T06:19:12.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1622 duration=6s
+2026-10-30T06:19:21.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1725 duration=6s
+2026-10-30T06:19:30.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:19:30.000Z WARN  inventory-reconciler-4 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #8
+2026-10-30T06:19:38.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1185 duration=9s
+2026-10-30T06:19:45.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2194 duration=4s
+2026-10-30T06:19:53.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=928 duration=6s
+2026-10-30T06:19:57.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2114 duration=4s
+2026-10-30T06:20:02.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=933 duration=6s
+2026-10-30T06:20:11.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1454 duration=5s
+2026-10-30T06:20:16.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1918 duration=6s
+2026-10-30T06:20:20.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2025 duration=5s
+2026-10-30T06:20:25.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1896 duration=7s
+2026-10-30T06:20:34.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1227 duration=6s
+2026-10-30T06:20:36.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1117 duration=3s
+2026-10-30T06:20:43.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1492 duration=4s
+2026-10-30T06:20:48.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1343 duration=6s
+2026-10-30T06:20:57.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1530 duration=8s
+2026-10-30T06:21:01.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2191 duration=5s
+2026-10-30T06:21:09.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 7.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:21:15.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1664 duration=9s
+2026-10-30T06:21:19.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2057 duration=6s
+2026-10-30T06:21:22.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1815 duration=5s
+2026-10-30T06:21:30.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1328 duration=5s
+2026-10-30T06:21:35.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2198 duration=6s
+2026-10-30T06:21:41.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1578 duration=8s
+2026-10-30T06:21:46.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1559 duration=9s
+2026-10-30T06:21:51.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1385 duration=9s
+2026-10-30T06:21:56.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=939 duration=5s
+2026-10-30T06:21:59.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2177 duration=5s
+2026-10-30T06:22:02.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2134 duration=8s
+2026-10-30T06:22:08.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1820 duration=6s
+2026-10-30T06:22:13.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1193 duration=5s
+2026-10-30T06:22:15.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:22:22.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2171 duration=6s
+2026-10-30T06:22:26.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1555 duration=6s
+2026-10-30T06:22:33.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1309 duration=9s
+2026-10-30T06:22:38.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1505 duration=8s
+2026-10-30T06:22:40.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1972 duration=9s
+2026-10-30T06:22:46.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1670 duration=6s
+2026-10-30T06:22:48.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1434 duration=4s
+2026-10-30T06:22:52.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=951 duration=3s
+2026-10-30T06:23:00.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1654 duration=6s
+2026-10-30T06:23:04.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2037 duration=4s
+2026-10-30T06:23:13.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1120 duration=5s
+2026-10-30T06:23:22.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1305 duration=8s
+2026-10-30T06:23:31.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1233 duration=7s
+2026-10-30T06:23:35.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=934 duration=3s
+2026-10-30T06:23:37.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2031 duration=6s
+2026-10-30T06:23:44.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1545 duration=9s
+2026-10-30T06:23:52.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 8.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:23:59.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:24:01.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2058 duration=9s
+2026-10-30T06:24:03.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 10.0s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:24:07.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 6.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:24:11.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1970 duration=4s
+2026-10-30T06:24:16.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1637 duration=5s
+2026-10-30T06:24:23.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1745 duration=5s
+2026-10-30T06:24:26.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1027 duration=7s
+2026-10-30T06:24:34.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1217 duration=7s
+2026-10-30T06:24:37.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1818 duration=4s
+2026-10-30T06:24:40.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1365 duration=4s
+2026-10-30T06:24:42.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=949 duration=3s
+2026-10-30T06:24:47.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:24:52.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1181 duration=7s
+2026-10-30T06:24:59.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1693 duration=9s
+2026-10-30T06:25:07.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1944 duration=9s
+2026-10-30T06:25:13.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.0s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:25:21.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 7.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:25:23.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1370 duration=7s
+2026-10-30T06:25:32.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1615 duration=8s
+2026-10-30T06:25:35.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1942 duration=9s
+2026-10-30T06:25:39.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:25:45.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2039 duration=5s
+2026-10-30T06:25:53.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1312 duration=9s
+2026-10-30T06:25:59.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1300 duration=5s
+2026-10-30T06:26:05.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:26:07.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2234 duration=8s
+2026-10-30T06:26:15.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1278 duration=3s
+2026-10-30T06:26:17.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1321 duration=4s
+2026-10-30T06:26:23.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2114 duration=9s
+2026-10-30T06:26:29.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1849 duration=3s
+2026-10-30T06:26:34.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1416 duration=4s
+2026-10-30T06:26:36.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=925 duration=4s
+2026-10-30T06:26:40.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1322 duration=6s
+2026-10-30T06:26:48.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1700 duration=7s
+2026-10-30T06:26:52.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2122 duration=5s
+2026-10-30T06:26:57.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2162 duration=3s
+2026-10-30T06:26:59.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2168 duration=3s
+2026-10-30T06:27:01.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=900 duration=5s
+2026-10-30T06:27:10.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1226 duration=3s
+2026-10-30T06:27:12.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1340 duration=8s
+2026-10-30T06:27:17.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1663 duration=3s
+2026-10-30T06:27:23.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1509 duration=9s
+2026-10-30T06:27:25.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1518 duration=4s
+2026-10-30T06:27:31.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1319 duration=3s
+2026-10-30T06:27:33.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:27:38.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2087 duration=8s
+2026-10-30T06:27:44.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=946 duration=8s
+2026-10-30T06:27:53.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1213 duration=4s
+2026-10-30T06:27:56.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=961 duration=3s
+2026-10-30T06:28:05.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1744 duration=4s
+2026-10-30T06:28:07.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2244 duration=3s
+2026-10-30T06:28:13.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1881 duration=4s
+2026-10-30T06:28:19.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2274 duration=5s
+2026-10-30T06:28:24.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1817 duration=9s
+2026-10-30T06:28:26.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 9.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:28:34.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1900 duration=9s
+2026-10-30T06:28:39.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=996 duration=5s
+2026-10-30T06:28:46.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2124 duration=5s
+2026-10-30T06:28:55.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1664 duration=8s
+2026-10-30T06:29:02.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1198 duration=5s
+2026-10-30T06:29:09.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 8.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:29:18.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1498 duration=4s
+2026-10-30T06:29:27.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1637 duration=6s
+2026-10-30T06:29:30.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1181 duration=5s
+2026-10-30T06:29:37.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2004 duration=9s
+2026-10-30T06:29:41.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1603 duration=7s
+2026-10-30T06:29:45.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2195 duration=9s
+2026-10-30T06:29:49.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 10.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:29:49.000Z WARN  inventory-reconciler-5 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #9
+2026-10-30T06:29:54.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1758 duration=3s
+2026-10-30T06:29:56.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 6.5s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:30:00.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 10.0s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:30:07.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.1s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:30:07.000Z WARN  inventory-reconciler-4 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #10
+2026-10-30T06:30:14.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1971 duration=8s
+2026-10-30T06:30:22.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2081 duration=5s
+2026-10-30T06:30:30.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1117 duration=4s
+2026-10-30T06:30:39.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1285 duration=8s
+2026-10-30T06:30:41.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1914 duration=4s
+2026-10-30T06:30:44.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1395 duration=9s
+2026-10-30T06:30:52.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1328 duration=7s
+2026-10-30T06:30:55.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=948 duration=3s
+2026-10-30T06:30:57.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1147 duration=4s
+2026-10-30T06:31:01.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 7.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:31:04.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2254 duration=6s
+2026-10-30T06:31:06.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1602 duration=6s
+2026-10-30T06:31:13.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1522 duration=6s
+2026-10-30T06:31:22.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=985 duration=8s
+2026-10-30T06:31:31.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1923 duration=5s
+2026-10-30T06:31:38.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1423 duration=8s
+2026-10-30T06:31:47.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1100 duration=6s
+2026-10-30T06:31:54.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=955 duration=6s
+2026-10-30T06:31:56.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1077 duration=6s
+2026-10-30T06:32:02.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 7.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:32:05.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1590 duration=4s
+2026-10-30T06:32:14.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1561 duration=5s
+2026-10-30T06:32:23.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2156 duration=6s
+2026-10-30T06:32:26.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2300 duration=4s
+2026-10-30T06:32:28.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1928 duration=4s
+2026-10-30T06:32:37.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2057 duration=6s
+2026-10-30T06:32:39.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2099 duration=3s
+2026-10-30T06:32:48.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1825 duration=5s
+2026-10-30T06:32:52.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1494 duration=7s
+2026-10-30T06:32:59.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.3s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:33:02.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1887 duration=6s
+2026-10-30T06:33:07.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1693 duration=9s
+2026-10-30T06:33:11.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.4s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:33:18.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1910 duration=4s
+2026-10-30T06:33:27.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1137 duration=3s
+2026-10-30T06:33:31.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1170 duration=8s
+2026-10-30T06:33:33.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1780 duration=3s
+2026-10-30T06:33:40.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1757 duration=6s
+2026-10-30T06:33:42.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1793 duration=7s
+2026-10-30T06:33:50.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1033 duration=3s
+2026-10-30T06:33:56.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1721 duration=7s
+2026-10-30T06:34:01.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1147 duration=3s
+2026-10-30T06:34:05.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=2068 duration=4s
+2026-10-30T06:34:10.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2018 duration=5s
+2026-10-30T06:34:16.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 10.4s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:34:16.000Z WARN  inventory-reconciler-4 kafka: left group inventory-reconciler: session timeout 10000ms exceeded; rebalance #11
+2026-10-30T06:34:20.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2046 duration=3s
+2026-10-30T06:34:25.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1201 duration=5s
+2026-10-30T06:34:29.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=922 duration=5s
+2026-10-30T06:34:31.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1130 duration=7s
+2026-10-30T06:34:37.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1521 duration=9s
+2026-10-30T06:34:41.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1399 duration=9s
+2026-10-30T06:34:50.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1286 duration=8s
+2026-10-30T06:34:59.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1102 duration=4s
+2026-10-30T06:35:07.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=2008 duration=9s
+2026-10-30T06:35:10.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2266 duration=4s
+2026-10-30T06:35:14.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1878 duration=7s
+2026-10-30T06:35:17.000Z WARN  inventory-reconciler-5 gc: Pause Full (Ergonomics) 9.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:35:25.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1361 duration=9s
+2026-10-30T06:35:31.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 8.6s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:35:38.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 9.8s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:35:45.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1360 duration=8s
+2026-10-30T06:35:49.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1943 duration=6s
+2026-10-30T06:35:53.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2126 duration=7s
+2026-10-30T06:35:59.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1786 duration=7s
+2026-10-30T06:36:01.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 6.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:36:05.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 7.9s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:36:11.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1599 duration=5s
+2026-10-30T06:36:18.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1862 duration=7s
+2026-10-30T06:36:27.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2309 duration=7s
+2026-10-30T06:36:31.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1902 duration=5s
+2026-10-30T06:36:34.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2188 duration=5s
+2026-10-30T06:36:40.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=2117 duration=7s
+2026-10-30T06:36:45.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1563 duration=4s
+2026-10-30T06:36:50.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1527 duration=4s
+2026-10-30T06:36:57.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1470 duration=5s
+2026-10-30T06:37:05.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2155 duration=9s
+2026-10-30T06:37:09.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2307 duration=8s
+2026-10-30T06:37:16.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1557 duration=4s
+2026-10-30T06:37:25.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1140 duration=8s
+2026-10-30T06:37:31.000Z WARN  inventory-reconciler-6 gc: Pause Full (Ergonomics) 9.4s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:37:38.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2226 duration=9s
+2026-10-30T06:37:47.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1403 duration=6s
+2026-10-30T06:37:56.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=2063 duration=6s
+2026-10-30T06:38:03.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1421 duration=7s
+2026-10-30T06:38:06.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1154 duration=6s
+2026-10-30T06:38:14.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1036 duration=4s
+2026-10-30T06:38:20.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2027 duration=7s
+2026-10-30T06:38:26.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1307 duration=5s
+2026-10-30T06:38:28.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1902 duration=7s
+2026-10-30T06:38:31.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1541 duration=3s
+2026-10-30T06:38:35.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1151 duration=5s
+2026-10-30T06:38:37.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1043 duration=5s
+2026-10-30T06:38:40.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1160 duration=9s
+2026-10-30T06:38:43.000Z INFO  inventory-reconciler-6 reconciler: committed batch size=5000 lag=1319 duration=3s
+2026-10-30T06:38:45.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1128 duration=5s
+2026-10-30T06:38:51.000Z INFO  inventory-reconciler-3 reconciler: committed batch size=5000 lag=1780 duration=4s
+2026-10-30T06:38:56.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2166 duration=7s
+2026-10-30T06:39:02.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1384 duration=4s
+2026-10-30T06:39:04.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=1350 duration=4s
+2026-10-30T06:39:12.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=2009 duration=7s
+2026-10-30T06:39:14.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1086 duration=7s
+2026-10-30T06:39:20.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.7s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:39:28.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1395 duration=6s
+2026-10-30T06:39:32.000Z INFO  inventory-reconciler-2 reconciler: committed batch size=5000 lag=1351 duration=5s
+2026-10-30T06:39:35.000Z INFO  inventory-reconciler-1 reconciler: committed batch size=5000 lag=1389 duration=8s
+2026-10-30T06:39:41.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=2128 duration=9s
+2026-10-30T06:39:49.000Z WARN  inventory-reconciler-4 gc: Pause Full (Ergonomics) 7.0s heap 1.88G->1.71G(2.00G) batch_size=5000
+2026-10-30T06:39:52.000Z INFO  inventory-reconciler-4 reconciler: committed batch size=5000 lag=1806 duration=4s
+2026-10-30T06:40:00.000Z INFO  inventory-reconciler-5 reconciler: committed batch size=5000 lag=947 duration=7s

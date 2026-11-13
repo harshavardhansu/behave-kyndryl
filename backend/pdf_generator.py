@@ -50,8 +50,8 @@ class NumberedCanvas(canvas.Canvas):
         self.drawString(40, 755, "Behave Kyndryl")
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#64748B"))
-        self.drawString(130, 755, "|  14-Agent Intelligent Operations & Resiliency Platform")
-        self.drawRightString(572, 755, "ENTERPRISE SECURITY & AUDIT REPORT")
+        self.drawString(130, 755, "|  Agentic incident response")
+        self.drawRightString(572, 755, "INCIDENT REPORT")
 
         # Top divider line
         self.setStrokeColor(colors.HexColor("#CBD5E1"))
@@ -62,7 +62,7 @@ class NumberedCanvas(canvas.Canvas):
         self.line(40, 42, 572, 42)
         self.setFont("Helvetica", 7.5)
         self.setFillColor(colors.HexColor("#64748B"))
-        self.drawString(40, 30, "CONFIDENTIAL · INTERNAL INCIDENT RESPONSE & COMPLIANCE · DO NOT DISTRIBUTE")
+        self.drawString(40, 30, "Generated from the mission record · AI-assisted, human-approved · Demonstration data")
         self.drawRightString(572, 30, f"Page {self._pageNumber} of {total_pages}")
         self.restoreState()
 
@@ -400,7 +400,7 @@ def generate_incident_resolution_pdf(incident: dict, state: dict) -> bytes:
     story.append(Spacer(1, 8))
 
     # Section 5: Automated Quality & Policy Validation Gates
-    story.append(Paragraph("5. Quality & Verification Gates (100% Pass Required)", styles["SectionHeader"]))
+    story.append(Paragraph("5. Test results recorded for this incident", styles["SectionHeader"]))
     story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#0284C7"), spaceAfter=6))
     if tests:
         test_rows = [[
@@ -432,7 +432,7 @@ def generate_incident_resolution_pdf(incident: dict, state: dict) -> bytes:
         )
         story.append(test_table)
     else:
-        story.append(Paragraph("<i>All automated regression checks verified successfully in staging environment.</i>", styles["Body"]))
+        story.append(Paragraph("<i>No automated test results are recorded for this incident.</i>", styles["Body"]))
     story.append(Spacer(1, 8))
 
     # Section 6: Governance, Approvals & Post-Incident Actions
@@ -442,11 +442,8 @@ def generate_incident_resolution_pdf(incident: dict, state: dict) -> bytes:
         for app in approvals:
             story.append(Paragraph(f"• <b>Approval {_escape(app.get('id'))}:</b> {_escape(app.get('title'))} — Status: <b>{_escape(app.get('status'))}</b> (Requested by {_escape(app.get('requestedBy'))}, Reviewed by {_escape(app.get('reviewedBy') or 'Lead SRE')})", styles["Body"]))
     else:
-        story.append(Paragraph("• Standard operational bounds confirmed under continuous automated governance.", styles["Body"]))
+        story.append(Paragraph("• No approvals are recorded for this incident.", styles["Body"]))
 
-    story.append(Paragraph("• <b>Runbook Automation:</b> Updated operational handbook and synthetic monitoring thresholds in observability pipeline.", styles["Body"]))
-    story.append(Paragraph("• <b>Continuous Quality Gate:</b> Regression suites codified into CI/CD deployment pipelines.", styles["Body"]))
-    story.append(Paragraph("• <b>Enterprise Resilience:</b> Circuit-breaking policies and aggregate connection budgets enforced.", styles["Body"]))
 
     doc.build(story, canvasmaker=NumberedCanvas)
     return buf.getvalue()

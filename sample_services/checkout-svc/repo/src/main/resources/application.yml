@@ -1,0 +1,16 @@
+server:
+  port: 8080
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres-primary:5432/orders
+    username: checkout
+    password: ${DB_PASSWORD}          # injected from the secret store
+    hikari:
+      pool-name: HikariPool-1
+      maximum-pool-size: 10           # v2.18.0 (c7f4e21): was 30
+      minimum-idle: 5
+      connection-timeout: 2000        # ms to wait for a free connection before failing
+      max-lifetime: 1800000
+payment:
+  client:
+    timeout-ms: 800
