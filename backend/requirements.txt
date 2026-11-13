@@ -10,4 +10,4 @@ PyJWT[crypto]>=2.10,<3
 azure-identity>=1.25,<2
 psycopg[binary]>=3.2,<4
 azure-ai-projects>=2.3.0,<3
-openai>=3.0.0,<4
+openai>=3.0.0,<4reportlab>=4,<5
