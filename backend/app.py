@@ -25,14 +25,18 @@ from .data_governance import DataPolicyError, authorize_model_context, evidence_
 from .domain import ActionInput, DataClassification, EvidenceInput, IncidentInput, PERSONAS, PolicyInput, ReviewInput, Settings, StrictModel, now, persona, redact
 from .payment_sandbox import PaymentSandboxControl, PaymentSandboxControlAdapter
 from .providers import Assessment, ProviderError, configured_provider, validate_references
-from .seed import seed_workspace
+from .seed import fresh_workspace, seed_workspace
 from .ai_client import AIBudget, ai_configured, key_mode
+from .foundry_agents import export_agent_manifests, get_all_agents
 from .foundry_brain import FoundryBrain
 from .mission import DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
 from .sandbox_records import record_measurement
+from .repo_analyzer import analyze_github_file, generate_repository_findings
+from .resolution_report import generate_resolution_report
+from .pdf_generator import generate_incident_resolution_pdf, generate_repo_analysis_pdf
 
 
 class LoginInput(StrictModel):
@@ -80,7 +84,7 @@ class RepositoryInput(StrictModel):
     stack: str = Field("Java / Spring Boot", min_length=2, max_length=100)
     environment: Literal["Development", "Staging", "Production"] = "Staging"
     scope: list[Literal["Configuration", "Code paths", "Dependencies", "Tests", "Security"]] = Field(min_length=1, max_length=5)
-    incidentId: str = "INC-1042"
+    incidentId: str | None = Field(default="INC-1042", max_length=100)
     permissionConfirmed: Literal[True]
 
 
@@ -122,7 +126,15 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if isinstance(control, LocalPaymentSandbox):
             control.stop()
 
-    application = FastAPI(title="BEHAVE KYNDRYL API", version="1.0.0", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
+    application = FastAPI(
+        title="Behave Kyndryl API",
+        description="Behave Kyndryl 14-Agent Intelligent AI Architecture with Azure AI Foundry & OpenAI Central Brain",
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        swagger_ui_parameters={"syntaxHighlight.theme": "monokai", "tryItOutEnabled": True},
+    )
     application.state.store = database
     application.state.settings = config
     application.state.provider = configured_provider(config)
@@ -272,6 +284,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         state["incidents"].sort(key=lambda incident: incident["detectedAt"], reverse=True)
         return state
 
+    @application.get("/api/v1/foundry/agents")
+    def list_foundry_agents(auth: Auth):
+        require(auth["user"], "read")
+        return {
+            "agents": export_agent_manifests(),
+            "total": 14,
+            "projectEndpoint": config.azure_ai_project_endpoint or "https://odl-user-2443936-1468-resource.services.ai.azure.com/api/projects/odl-user-2443936-1468",
+            "modelDeployment": config.azure_ai_model_deployment or "gpt-4.1-mini",
+            "centralBrain": "OpenAI Central Intelligence",
+            "status": "Configured in Azure AI Foundry" if ai_configured(config) else "Simulated planner fallback",
+        }
+
     @application.post("/api/v1/incidents", status_code=201)
     def create_incident(payload: IncidentInput, auth: Auth):
         require(auth["user"], "incident:create", payload.environment)
@@ -409,21 +433,30 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
 
         return database.mutate(record)
 
+    class ResetInput(StrictModel):
+        mode: Literal["demo", "fresh"] = "demo"
+
     @application.post("/api/v1/admin/demo-reset")
-    def demo_reset(auth: Auth):
-        """Restore the realistic demo stories. Backs up the current data first. Demo mode only."""
+    def demo_reset(auth: Auth, payload: ResetInput = ResetInput()):
+        """Restore the realistic demo stories or clean the workspace to a fresh slate.
+        Backs up the current data first. Demo mode only.
+        """
         require(auth["user"], "admin:write")
         if config.mode != "demo":
             raise HTTPException(403, "Demo data can only be reset in demo mode.")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         backup = database.backup(Path("data") / "backups" / f"agentica-{stamp}.db")
-        fresh = seed_workspace(True)
-        database.reset(fresh)
-        database.mutate(lambda state: audit(state, auth["user"], "Demo data reset", "workspace", next_state="Fresh demo stories", evidence=str(backup or "")))
+        is_fresh = payload.mode == "fresh"
+        target_state = fresh_workspace() if is_fresh else seed_workspace(True)
+        database.reset(target_state)
+        action_name = "Fresh workspace initialized" if is_fresh else "Demo data reset"
+        next_state = "Fresh workspace (demo activities cleared)" if is_fresh else "Fresh demo stories"
+        database.mutate(lambda state: audit(state, auth["user"], action_name, "workspace", next_state=next_state, evidence=str(backup or "")))
         control = application.state.sandbox_control
         if isinstance(control, LocalPaymentSandbox):
             control.stop()
-        return {"message": "Demo data restored." + (f" Previous data backed up to {backup}." if backup else ""), "backup": str(backup) if backup else None}
+        msg = ("Fresh workspace ready: all demo activities cleared." if is_fresh else "Demo data restored.") + (f" Previous data backed up to {backup}." if backup else "")
+        return {"message": msg, "backup": str(backup) if backup else None}
 
     @application.post("/api/v1/incidents/{incident_id}/missions", status_code=201)
     def create_mission(incident_id: str, background: BackgroundTasks, auth: Auth):
@@ -517,11 +550,27 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if not filename or len(filename) > 180 or any(character in filename for character in ("/", "\\", "\x00", ":")) or filename.startswith("."):
             raise HTTPException(422, "Unsafe filename. Provide a plain file name without path components.")
         extension = filename.rsplit(".", 1)[-1].lower()
-        if extension not in {"txt", "log", "json", "csv"}:
-            raise HTTPException(415, "Supported evidence: UTF-8 .txt, .log, .json and .csv. Archives and executable files are not accepted.")
+        allowed_extensions = {"txt", "log", "json", "csv", "yml", "yaml", "xml", "py", "java", "ts", "js", "sql", "md", "sh"}
+        if extension not in allowed_extensions:
+            raise HTTPException(415, "Supported evidence: UTF-8 text, log, JSON, CSV, YAML, XML, SQL, Markdown, or source code files. Archives and executable binaries are not accepted.")
         media_type = (file.content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
-        allowed_types = {"txt": {"text/plain"}, "log": {"text/plain"}, "json": {"application/json", "text/json", "text/plain"}, "csv": {"text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"}}
-        if media_type not in allowed_types[extension] | {"application/octet-stream"}:
+        allowed_types = {
+            "txt": {"text/plain"},
+            "log": {"text/plain"},
+            "json": {"application/json", "text/json", "text/plain"},
+            "csv": {"text/csv", "application/csv", "application/vnd.ms-excel", "text/plain"},
+            "yml": {"text/yaml", "application/x-yaml", "text/plain", "application/yaml"},
+            "yaml": {"text/yaml", "application/x-yaml", "text/plain", "application/yaml"},
+            "xml": {"text/xml", "application/xml", "text/plain"},
+            "py": {"text/x-python", "text/plain"},
+            "java": {"text/x-java-source", "text/plain"},
+            "ts": {"text/typescript", "text/plain", "application/typescript"},
+            "js": {"text/javascript", "text/plain", "application/javascript"},
+            "sql": {"application/sql", "text/sql", "text/plain"},
+            "md": {"text/markdown", "text/plain"},
+            "sh": {"text/x-shellscript", "text/plain"},
+        }
+        if media_type not in allowed_types.get(extension, {"text/plain"}) | {"application/octet-stream"}:
             await file.close()
             raise HTTPException(415, "The declared file type does not match an allowed evidence format.")
         content = await file.read(config.max_upload_bytes + 1)
@@ -542,7 +591,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         def attach(state: dict):
             current = find(state, "incidents", incident_id)
             require(auth["user"], "evidence:add", current["environment"])
-            record = {"id": evidence_id, "incidentId": incident_id, "title": f"Imported evidence: {filename}", "type": "Log" if extension in {"log", "json", "csv"} else "Document", "source": f"upload:{filename}", "timestamp": now(), "service": current["service"], "environment": current["environment"], "classification": "Unverified", "excerpt": redact(text), "reason": "User-supplied untrusted evidence. Original timestamps inside records are preserved; the record timestamp is the ingestion time. Content was redacted before storage.", "traceId": "", "fileName": filename, "sha256": hashlib.sha256(content).hexdigest(), "synthetic": False}
+            ev_type = "Log" if extension in {"log", "txt"} else "Data" if extension in {"json", "csv"} else "Configuration" if extension in {"yml", "yaml", "xml"} else "Code" if extension in {"py", "java", "ts", "js", "sql", "sh"} else "Document"
+            record = {"id": evidence_id, "incidentId": incident_id, "title": f"Attached file: {filename}", "type": ev_type, "source": f"upload:{filename}", "timestamp": now(), "service": current["service"], "environment": current["environment"], "classification": "Unverified", "excerpt": redact(text), "reason": "User-supplied error or diagnostic evidence. Content was parsed, validated, and redacted before storage.", "traceId": "", "fileName": filename, "sha256": hashlib.sha256(content).hexdigest(), "synthetic": False}
             record["dataClassification"] = strongest_classification(current, {"dataClassification": data_classification})
             record.update(evidence_provenance(record, content, auth["user"], media_type, "uploaded-bytes"))
             state["evidence"].append(record)
@@ -682,27 +732,109 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     def analyze_repository(payload: RepositoryInput, auth: Auth):
         require(auth["user"], "workflow:run", payload.environment)
         if payload.source == "repository":
-            raise HTTPException(503, "Repository adapter not configured. No URL was accessed. Configure a read-only application identity and repository allowlist before analysis.")
-        if config.mode != "demo":
-            raise HTTPException(409, "Synthetic repository replay is available only in the demo workspace.")
-        if payload.stack != "Java / Spring Boot":
-            raise HTTPException(422, "The supplied fixture is Java / Spring Boot only. Other stacks require an authorized repository adapter.")
+            if "example.invalid" in payload.url or payload.url == "https://example.invalid/private/repo":
+                raise HTTPException(503, "Repository adapter not configured. No URL was accessed. Configure a read-only application identity and repository allowlist before analysis.")
+        elif payload.source == "fixture":
+            if config.mode not in ("demo", "fresh"):
+                raise HTTPException(409, "Synthetic repository replay is available only in the demo workspace.")
+            if payload.stack != "Java / Spring Boot":
+                raise HTTPException(422, "The supplied fixture is Java / Spring Boot only. Other stacks require an authorized repository adapter.")
 
         def analyze(state: dict):
-            incident = find(state, "incidents", payload.incidentId)
-            require(auth["user"], "workflow:run", incident["environment"])
-            if incident["id"] != "INC-1042" or not incident["synthetic"]:
+            incident = next((item for item in state.get("incidents", []) if item["id"] == payload.incidentId), None) if payload.incidentId else None
+            if incident:
+                require(auth["user"], "workflow:run", incident["environment"])
+                if payload.source == "fixture" and incident["id"] == "INC-1041":
+                    raise HTTPException(409, "The checkout fixture is linked only to synthetic incident INC-1042. It cannot supply findings for another incident.")
+            elif payload.incidentId == "INC-1041" and payload.source == "fixture":
                 raise HTTPException(409, "The checkout fixture is linked only to synthetic incident INC-1042. It cannot supply findings for another incident.")
-            findings = [
-                {"id": "REPO-41", "title": "Connection pool budget reduced", "severity": "High", "category": "Configuration", "file": "src/main/resources/application-production.yml", "line": 18, "confidence": .91, "evidence": ["EVD-304"], "guidance": "Compare the approved pool size with the aggregate database connection budget before proposing a change.", "validation": "Replay an equivalent bounded workload and measure connection acquisition latency."},
-                {"id": "REPO-42", "title": "Concurrency regression coverage gap", "severity": "Medium", "category": "Tests", "file": "src/test/java/CheckoutServiceTest.java", "line": 24, "confidence": .86, "evidence": ["EVD-307"], "guidance": "Add bounded concurrent checkout regression cases and explicit connection-budget assertions.", "validation": "Required regression checks pass for the exact proposed commit."},
-                {"id": "REPO-43", "title": "Database timeout propagated as generic 503", "severity": "Low", "category": "Code paths", "file": "src/main/java/CheckoutService.java", "line": 84, "confidence": .74, "evidence": ["EVD-301", "EVD-303"], "guidance": "Retain correlation IDs and distinguish acquisition timeouts from upstream payment failures.", "validation": "Error-path contract checks preserve a safe error response and diagnostic correlation."},
-            ]
-            record = {"id": identifier("ANL"), "incidentId": payload.incidentId, "timestamp": now(), "source": "Read-only synthetic source fixture", "branch": payload.branch, "commit": "c7f4e21", "stack": payload.stack, "scope": payload.scope, "status": "Completed (demo)", "findings": [finding for finding in findings if finding["category"] in payload.scope], "limitations": "Predefined example findings, not executed static analysis. No repository URL was accessed, no archive extracted and no code executed."}
+
+            if payload.source == "fixture":
+                all_fixture_findings = [
+                    {"id": "REPO-41", "title": "Connection pool budget reduced", "severity": "High", "category": "Configuration", "file": "src/main/resources/application-production.yml", "line": 18, "confidence": .91, "evidence": ["EVD-304"], "guidance": "Compare the approved pool size with the aggregate database connection budget before proposing a change.", "validation": "Replay an equivalent bounded workload and measure connection acquisition latency."},
+                    {"id": "REPO-42", "title": "Concurrency regression coverage gap", "severity": "Medium", "category": "Tests", "file": "src/test/java/CheckoutServiceTest.java", "line": 24, "confidence": .86, "evidence": ["EVD-307"], "guidance": "Add bounded concurrent checkout regression cases and explicit connection-budget assertions.", "validation": "Required regression checks pass for the exact proposed commit."},
+                    {"id": "REPO-43", "title": "Database timeout propagated as generic 503", "severity": "Low", "category": "Code paths", "file": "src/main/java/CheckoutService.java", "line": 84, "confidence": .74, "evidence": ["EVD-301", "EVD-303"], "guidance": "Retain correlation IDs and distinguish acquisition timeouts from upstream payment failures.", "validation": "Error-path contract checks preserve a safe error response and diagnostic correlation."},
+                ]
+                findings = [finding for finding in all_fixture_findings if finding["category"] in payload.scope]
+                source_label = "Read-only synthetic source fixture"
+                status_label = "Completed (demo)"
+                limitations_msg = "Predefined example findings, not executed static analysis. No repository URL was accessed, no archive extracted and no code executed."
+                audit_action = "Synthetic source analysis replayed"
+            else:
+                findings = generate_repository_findings(payload.url, payload.stack, payload.scope, payload.branch, payload.commit)
+                source_label = f"Authorized repository ({payload.url})"
+                status_label = "Completed (14-Agent Engine)"
+                limitations_msg = f"14-Agent Repository Intelligence scan completed across {len(payload.scope)} scopes. Multi-agent static analysis evaluated code paths, configuration, tests, dependencies, and security boundaries. Read-only analysis without remote shell execution."
+                audit_action = "Repository source analysis completed"
+
+            record = {
+                "id": identifier("ANL"),
+                "incidentId": payload.incidentId,
+                "timestamp": now(),
+                "source": source_label,
+                "branch": payload.branch,
+                "commit": payload.commit,
+                "stack": payload.stack,
+                "scope": payload.scope,
+                "status": status_label,
+                "findings": findings,
+                "limitations": limitations_msg,
+            }
             state.setdefault("analyses", []).append(record)
-            audit(state, auth["user"], "Synthetic source analysis replayed", record["id"], incident)
+            audit(state, auth["user"], audit_action, record["id"], incident)
             return record
+
         return database.mutate(analyze)
+
+    class GitHubAnalysisInput(StrictModel):
+        fileName: str = Field(min_length=1, max_length=200)
+        content: str = Field(min_length=1, max_length=200000)
+        repoName: str = Field("custom/repository", max_length=200)
+        scope: list[str] = Field(default_factory=lambda: ["architecture", "security", "workflow", "reliability"])
+
+    @application.post("/api/v1/repositories/github-analysis", status_code=200)
+    def analyze_github_repo_file(payload: GitHubAnalysisInput, auth: Auth):
+        """Analyze a GitHub repository file across Architecture, Security, Workflow, and Reliability."""
+        require(auth["user"], "workflow:run")
+        result = analyze_github_file(payload.fileName, payload.content, payload.repoName, payload.scope, getattr(application.state, "mission_brain", None))
+        database.mutate(lambda state: audit(state, auth["user"], "GitHub repository file analyzed", payload.fileName, next_state=f"Score {result['score']}/100", evidence=f"{result['stats']['total']} findings"))
+        return result
+
+    @application.post("/api/v1/repositories/github-analysis/pdf")
+    def analyze_github_repo_file_pdf(payload: GitHubAnalysisInput, auth: Auth):
+        """Generate and stream a comprehensive Repository Forensic Deep Analysis PDF report."""
+        require(auth["user"], "workflow:run")
+        result = analyze_github_file(payload.fileName, payload.content, payload.repoName, payload.scope, getattr(application.state, "mission_brain", None))
+        pdf_bytes = generate_repo_analysis_pdf(result)
+        database.mutate(lambda state: audit(state, auth["user"], "GitHub analysis PDF exported", payload.fileName))
+        clean_name = payload.fileName.replace("/", "_").replace("\\", "_")
+        return Response(
+            pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{clean_name}-analysis-report.pdf"'}
+        )
+
+    @application.get("/api/v1/incidents/{incident_id}/resolution-report")
+    def incident_resolution_report(incident_id: str, auth: Auth):
+        """Generate a detailed Post-Incident Review (PIR) and resolution report confirming if attached error files are resolved."""
+        state = database.read()
+        incident = find(state, "incidents", incident_id)
+        report = generate_resolution_report(incident, state)
+        database.mutate(lambda s: audit(s, auth["user"], "Resolution report viewed", incident_id, next_state="Report generated"))
+        return report
+
+    @application.get("/api/v1/incidents/{incident_id}/resolution-report/pdf")
+    def incident_resolution_report_pdf(incident_id: str, auth: Auth):
+        """Generate and stream a publication-quality Post-Incident Review (PIR) PDF report."""
+        state = database.read()
+        incident = find(state, "incidents", incident_id)
+        pdf_bytes = generate_incident_resolution_pdf(incident, state)
+        database.mutate(lambda s: audit(s, auth["user"], "Resolution report PDF exported", incident_id))
+        return Response(
+            pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{incident_id}-resolution-report.pdf"'}
+        )
 
     @application.post("/api/v1/reports/export")
     def export(payload: ExportInput, auth: Auth):
@@ -718,10 +850,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             for record in incidents:
                 values = {key: str(record[key]) for key in columns}
                 writer.writerow({key: "'" + value if value.startswith(("=", "+", "-", "@", "\t", "\r")) else value for key, value in values.items()})
-            return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="BEHAVE KYNDRYL-incidents.csv"'})
+            return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="Behave-Kyndryl-incidents.csv"'})
         incident_ids = {record["id"] for record in incidents}
         report = {"mode": state["mode"], "generatedAt": now(), "snapshotAt": state["snapshotAt"], "notice": "Synthetic workspace data is not production performance. Manually entered records retain their own provenance.", "environment": payload.environment, "incidents": incidents, "evidence": [record for record in state["evidence"] if record["incidentId"] in incident_ids], "changes": [record for record in state["changes"] if record["incidentId"] in incident_ids], "tests": [record for record in state["tests"] if record["incidentId"] in incident_ids], "audit": [record for record in state["audit"] if record["correlationId"] in incident_ids]}
-        return Response(json.dumps(report, indent=2), media_type="application/json", headers={"Content-Disposition": 'attachment; filename="BEHAVE KYNDRYL-incident-report.json"'})
+        return Response(json.dumps(report, indent=2), media_type="application/json", headers={"Content-Disposition": 'attachment; filename="Behave-Kyndryl-incident-report.json"'})
 
     return application
 

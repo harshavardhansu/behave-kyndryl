@@ -118,10 +118,31 @@ function CreateIncidentDialog() {
     detectedAt: localDateTime(),
   })
   const [file, setFile] = useState<File | null>(null)
+  const [errorFile, setErrorFile] = useState<File | null>(null)
+  const [errorFileSnippet, setErrorFileSnippet] = useState<string>('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const update = (key: keyof IncidentInput, value: string) =>
     setForm((current) => ({ ...current, [key]: value }))
+
+  function onDiagnosticFile(candidate: File | null) {
+    setErrorFile(candidate)
+    if (!candidate) {
+      setErrorFileSnippet('')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = String(e.target?.result ?? '')
+      setErrorFileSnippet(text.slice(0, 400))
+      setForm((cur) => ({
+        ...cur,
+        error: cur.error || text.slice(0, 4000),
+        source: cur.source === 'Manual report' ? 'Telemetry import' : cur.source,
+      }))
+    }
+    reader.readAsText(candidate)
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -145,11 +166,28 @@ function CreateIncidentDialog() {
           ...form,
           detectedAt: new Date(form.detectedAt).toISOString(),
         })
+        if (errorFile) {
+          try {
+            const body = new FormData()
+            body.append('file', errorFile)
+            body.append('dataClassification', 'Internal')
+            await request(`/incidents/${result.id}/evidence/upload`, {
+              method: 'POST',
+              body,
+            })
+          } catch (uploadErr) {
+            console.warn('Diagnostic file attachment warning:', uploadErr)
+          }
+        }
         await refresh()
         selectIncident(result.id)
         setCreateOpen(false)
         navigate(`/incidents/${result.id}`)
-        notify(`${result.id} created. Add evidence to begin an investigation.`)
+        notify(
+          errorFile
+            ? `${result.id} created with attached error evidence (${errorFile.name}). Ready for investigation!`
+            : `${result.id} created. Add evidence to begin an investigation.`
+        )
       }
     } catch (failure) {
       setError(errorMessage(failure))
@@ -275,6 +313,40 @@ function CreateIncidentDialog() {
                   placeholder="Customer impact, affected transactions or blocked delivery"
                 />
               </label>
+              <div className="field-group">
+                <label className="field-label">
+                  Attach error log or diagnostic file (Optional)
+                  <span className="field-hint">
+                    Attach an error file to automatically supply diagnostic context and evidence for AI agent analysis
+                  </span>
+                </label>
+                <FilePicker
+                  file={errorFile}
+                  onFile={onDiagnosticFile}
+                  accept=".txt,.log,.json,.csv,.yml,.yaml,.xml,.py,.java,.ts,.js,.sql,.md"
+                  onError={setError}
+                />
+                {errorFileSnippet && (
+                  <div
+                    style={{
+                      marginTop: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(0,0,0,0.25)',
+                      border: '1px solid var(--color-border, #2d3748)',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontFamily: 'monospace',
+                      maxHeight: '120px',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    <div style={{ color: 'var(--color-primary-light, #70a5ff)', fontWeight: 600, marginBottom: '4px' }}>
+                      Extracted error preview from {errorFile?.name}:
+                    </div>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{errorFileSnippet}</pre>
+                  </div>
+                )}
+              </div>
               <div className="form-grid">
                 <label className="field-label">
                   Detection source

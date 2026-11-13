@@ -27,6 +27,7 @@ import { Knowledge } from './pages/Knowledge'
 import { Reports } from './pages/Reports'
 import { Audit } from './pages/Audit'
 import { Administration } from './pages/Administration'
+import { ApiReference } from './pages/ApiReference'
 import { ApiError } from './lib/api'
 
 const queryClient = new QueryClient({
@@ -119,6 +120,7 @@ export default function App() {
                   <Route path="reports" element={<Reports />} />
                   <Route path="audit" element={<Audit />} />
                   <Route path="administration" element={<Administration />} />
+                  <Route path="api-reference" element={<ApiReference />} />
                   <Route path="*" element={<ModuleWorkspace />} />
                 </Route>
               </Routes>

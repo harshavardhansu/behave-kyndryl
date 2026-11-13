@@ -546,15 +546,13 @@ export function Administration() {
                 </div>
               ))}
             </div>
-            <a
+            <Link
               className="button button-secondary"
-              href="/api/docs"
-              target="_blank"
-              rel="noreferrer"
+              to="/api-reference"
             >
               Open API reference
               <ArrowUpRight size={14} />
-            </a>
+            </Link>
           </section>
         </div>
       )}
@@ -735,15 +733,13 @@ export function Administration() {
                 <Check size={15} />
                 Recheck registry
               </Button>
-              <a
+              <Link
                 className="button button-secondary"
-                href="/api/docs"
-                target="_blank"
-                rel="noreferrer"
+                to="/api-reference"
               >
                 API reference
                 <ArrowUpRight size={13} />
-              </a>
+              </Link>
             </div>
           </>
         )}

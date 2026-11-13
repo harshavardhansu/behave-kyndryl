@@ -241,7 +241,6 @@ textarea {
     font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     line-height: 1;
     white-space: nowrap;
-    text-transform: lowercase;
 }
 
 .brand-kyndryl {

@@ -84,3 +84,27 @@ export async function downloadReport(
   anchor.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+export async function downloadBlob(
+  path: string,
+  options: RequestInit = {}
+): Promise<Blob> {
+  const headers = new Headers(options.headers)
+  if (options.body && !(options.body instanceof FormData))
+    headers.set('Content-Type', 'application/json')
+  if (options.method && options.method !== 'GET')
+    headers.set('X-CSRF-Token', csrfToken)
+  const response = await fetch(`/api/v1${path}`, {
+    ...options,
+    headers,
+    credentials: 'same-origin',
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => null)
+    throw new ApiError(
+      error?.detail ?? `Failed to download file (${response.status})`,
+      response.status
+    )
+  }
+  return response.blob()
+}
