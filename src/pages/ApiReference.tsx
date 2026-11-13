@@ -25,9 +25,9 @@ const ENDPOINTS: Endpoint[] = [
   {
     method: 'GET',
     path: '/api/v1/foundry/agents',
-    title: 'List 14 Azure AI Foundry Agents',
-    category: '14 Foundry Agents & Intelligence',
-    description: 'Retrieves all 14 Azure AI Foundry specialized agents, system prompts, squad phases, and human approval boundaries.',
+    title: 'Foundry agents status',
+    category: 'Agent missions & Foundry agents',
+    description: 'Which of the 14 agent roles are really created in Azure AI Foundry (version, runs, last sync), and which mode the missions run in.',
     permission: 'read',
   },
   {
@@ -89,9 +89,9 @@ const ENDPOINTS: Endpoint[] = [
   {
     method: 'POST',
     path: '/api/v1/incidents/{id}/missions',
-    title: 'Start 14-Agent AI Mission',
-    category: '14 Foundry Agents & Intelligence',
-    description: 'Activates the OpenAI Central Brain to orchestrate the 14 Azure AI Foundry specialized agents on the incident.',
+    title: 'Start an agent mission',
+    category: 'Agent missions & Foundry agents',
+    description: 'The Orchestrator analyses the incident and proposes a team of only the specialists it needs; a human approves the team, the root cause, the fix and the outcome.',
     permission: 'workflow:run',
   },
   {
@@ -173,7 +173,7 @@ export function ApiReference() {
     <div className="page-enter" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <PageHeader
         title="Behave Kyndryl API Reference"
-        description="Production-grade RESTful interface / 14-Agent Intelligent AI Architecture"
+        description="REST interface / agent missions / human-governed approvals"
         actions={
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <a

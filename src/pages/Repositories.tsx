@@ -349,7 +349,7 @@ security:
       setTab('Analysis findings')
       notify(
         source === 'repository'
-          ? 'Repository analysis completed successfully by 14 Azure AI Foundry agents.'
+          ? 'Simulated template findings recorded. The repository was not accessed.'
           : 'Synthetic source analysis replay recorded.'
       )
     } catch (failure) {
@@ -498,16 +498,10 @@ security:
               </dl>
             </section>
           </div>
-          <Notice
-            title="14-Agent Repository Intelligence Active"
-            action={
-              <Button variant="secondary" onClick={() => setAnalysisOpen(true)}>
-                <Sparkles size={14} />
-                Analyse project
-              </Button>
-            }
-          >
-            Repository Intelligence Engine is enabled with 14 Azure AI Foundry specialized agents. Supports authorized Git repositories, GitHub file deep analysis, and read-only source fixtures.
+          <Notice title="How repository analysis works today">
+            <strong>GitHub file analysis</strong> runs rule-based checks on the file you paste or upload (security, workflow,
+            reliability, architecture). The <strong>source fixture</strong> replays predefined example findings, and a repository URL
+            produces <strong>simulated template findings</strong> because no repository is cloned. No AI agent reads your code here.
           </Notice>
         </>
       )}
@@ -623,7 +617,7 @@ security:
         <div className="github-analysis-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
           <SectionHeader
             title="GitHub Repository File Deep Analysis"
-            caption="14 Azure AI Foundry specialized agents forensic analysis of architecture, security, workflow, and reliability"
+            caption="Rule-based checks of the file for architecture, security, workflow and reliability issues"
             actions={
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <label className="button button-secondary" style={{ cursor: 'pointer' }}>
@@ -700,8 +694,9 @@ security:
                 </div>
               </div>
 
-              <Notice title="AI Intelligence Architecture">
-                Azure AI Foundry specialized agents (Architecture Sentinel, Security Auditor, Workflow Optimizer) perform multi-layer static and semantic analysis.
+              <Notice title="Rule-based analysis">
+                This analysis uses pattern-based rules (secrets, unsafe settings, missing timeouts, workflow and reliability issues). It does not
+                call an AI model, and its findings should be reviewed by a person.
               </Notice>
             </div>
 
@@ -997,12 +992,12 @@ security:
               title={
                 source === 'fixture'
                   ? 'Synthetic analysis replay'
-                  : '14-Agent Repository Intelligence'
+                  : 'Simulated template findings'
               }
             >
               {source === 'fixture'
-                ? 'Results come from the Java/Spring Boot source fixture. Multi-agent static analysis evaluates configuration, code paths, dependencies, and tests.'
-                : 'Authorized repository analysis enabled. 14 Azure AI Foundry agents inspect code paths, configurations, dependencies, security boundaries, and test coverage.'}
+                ? 'Results come from the Java/Spring Boot source fixture: predefined example findings, not executed analysis.'
+                : 'The repository is not cloned or read. The result is clearly labelled template findings for the selected stack; connect an authorized read-only repository adapter for real analysis.'}
             </Notice>
             {error && (
               <Notice title="Analysis not completed" tone="error">

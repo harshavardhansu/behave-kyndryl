@@ -67,11 +67,11 @@ test('all 14 modules navigate without runtime errors and keep the Kyndryl Bridge
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`) })
   await openWorkspace(page)
-  await expect(page).toHaveTitle('BEHAVE KYNDRYL')
-  await expect(page.getByRole('link', { name: 'BEHAVE KYNDRYL command centre', exact: true })).toHaveText('Behave kyndryl')
-  await expect(page.locator('.workspace-footer')).toContainText('BEHAVE KYNDRYL')
+  await expect(page).toHaveTitle('Behave Kyndryl')
+  await expect(page.getByRole('link', { name: 'Behave Kyndryl command centre', exact: true })).toHaveText('Behave Kyndryl')
+  await expect(page.locator('.workspace-footer')).toContainText('Behave Kyndryl')
   const schema = await (await page.request.get('/api/openapi.json')).json()
-  expect(schema.info.title).toBe('BEHAVE KYNDRYL API')
+  expect(schema.info.title).toBe('Behave Kyndryl API')
   await expect(page.locator('.global-header')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   await expect(page.locator('.global-header .brand-kyndryl')).toHaveCSS('color', 'rgb(255, 70, 45)')
   for (const [path, title] of routes) {
@@ -180,7 +180,7 @@ test('incident intake validates input and uploads redacted evidence', async ({ p
   await evidenceDialog.getByRole('button', { name: 'Attach evidence', exact: true }).click()
   await expect(evidenceDialog).not.toBeVisible()
   await page.getByRole('tab', { name: 'Evidence', exact: true }).click()
-  await page.getByRole('button', { name: /Imported evidence: browser-evidence.json/ }).click()
+  await page.getByRole('button', { name: /Attached file: browser-evidence.json/ }).click()
   await expect(page.getByRole('dialog')).toContainText('[REDACTED]')
   await expect(page.getByRole('dialog')).not.toContainText('synthetic-sensitive-placeholder')
 })
@@ -286,26 +286,26 @@ test('search, table filters, export and explicit integration errors work', async
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Export environment records' }).click()
   const download = await downloadPromise
-  expect(download.suggestedFilename()).toBe('BEHAVE KYNDRYL-workspace.json')
+  expect(download.suggestedFilename()).toBe('Behave-Kyndryl-workspace.json')
 })
 
 test('API failure is explicit and recoverable', async ({ page }) => {
   await page.route('**/api/v1/workspace', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Temporary API outage for the failure-state test.' }) }))
   await page.goto('/', { waitUntil: 'commit' })
   await expect(page.getByText('Workspace unavailable', { exact: true })).toBeVisible()
-  await expect(page.locator('.loading-brand')).toHaveText('Behave kyndryl')
+  await expect(page.locator('.loading-brand')).toHaveText('Behave Kyndryl')
   await expect(page.getByRole('button', { name: 'Retry connection' })).toBeVisible()
   await page.unroute('**/api/v1/workspace')
   await page.getByRole('button', { name: 'Retry connection' }).click()
   await expect(page.getByRole('heading', { name: 'Command centre' })).toBeVisible()
 })
 
-test('sign-in displays the behave kyndryl wordmark on mobile', async ({ page }) => {
+test('sign-in displays the Behave Kyndryl wordmark on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.addInitScript(() => sessionStorage.setItem('agentica-signed-out', 'true'))
   await page.goto('/', { waitUntil: 'commit' })
   await expect(page.getByRole('heading', { name: 'Workspace access' })).toBeVisible()
-  await expect(page.locator('.loading-brand')).toHaveText('Behave kyndryl')
+  await expect(page.locator('.loading-brand')).toHaveText('Behave Kyndryl')
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
 })
 

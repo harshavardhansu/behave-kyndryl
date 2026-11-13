@@ -359,7 +359,7 @@ export function Changes() {
                   </ol>
                   <Notice title="Deployment provider is not configured">
                     Only the local, explicitly authorized simulation is
-                    available. BEHAVE KYNDRYL does not hold a production deployment
+                    available. Behave Kyndryl does not hold a production deployment
                     identity.
                   </Notice>
                 </>

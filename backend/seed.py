@@ -315,8 +315,8 @@ def fresh_workspace() -> dict:
                 "id": "foundry",
                 "name": "Microsoft Foundry",
                 "category": "AI provider",
-                "status": "Configured in Azure AI Foundry",
-                "description": "14 Azure AI Foundry specialized agents orchestrated by OpenAI Central Brain.",
+                "status": "Not configured",
+                "description": "Read-only structured assessment and agent missions on Azure OpenAI, optionally with the 14 agents created in Azure AI Foundry.",
                 "required": ["AZURE_AI_PROJECT_ENDPOINT", "AZURE_AI_MODEL_DEPLOYMENT"],
             },
             {

@@ -281,7 +281,7 @@ export function Shell() {
           >
             <Menu size={21} />
           </IconButton>
-          <Link to="/" className="brand" aria-label="BEHAVE KYNDRYL command centre">
+          <Link to="/" className="brand" aria-label="Behave Kyndryl command centre">
             <BrandMark />
           </Link>
           <span className="brand-console">Command Centre</span>
@@ -570,7 +570,7 @@ export function Shell() {
             <ShieldCheck size={13} /> Human-governed operations
           </span>
           <span>
-            BEHAVE KYNDRYL <span className="muted">/</span> Local demonstration{' '}
+            Behave Kyndryl <span className="muted">/</span> Local demonstration{' '}
             <span className="version-label">v1.0</span>
           </span>
         </footer>
@@ -652,7 +652,7 @@ export function Shell() {
         open={helpOpen}
         onClose={() => setHelpOpen(false)}
         title="Workspace documentation"
-        subtitle="BEHAVE KYNDRYL / Resources"
+        subtitle="Behave Kyndryl / Resources"
       >
         <Notice title="Local demonstration">
           Incident management, evidence storage and approval enforcement are

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     azure_ai_model_deployment: str = ""
     azure_tenant_id: str = ""
     azure_client_id: str = ""
+    azure_client_secret: SecretStr = SecretStr("")
     auth_audience: str = Field("", validation_alias="AGENTICA_AUTH_AUDIENCE")
     object_storage_configuration: str = ""
     ai_allowed_classifications: list[Literal["Public", "Internal", "Confidential"]] = Field(default_factory=list, validation_alias="AGENTICA_AI_ALLOWED_CLASSIFICATIONS")
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     azure_openai_api_key: SecretStr = SecretStr("")
     ai_daily_call_limit: int = Field(40, validation_alias="AGENTICA_AI_DAILY_CALL_LIMIT", ge=0, le=10_000)
     ai_max_output_tokens: int = Field(900, validation_alias="AGENTICA_AI_MAX_OUTPUT_TOKENS", ge=100, le=4_000)
+    agent_mode: Literal["auto", "foundry", "model"] = Field("auto", validation_alias="AGENTICA_AGENT_MODE")
 
 
 def now() -> str:

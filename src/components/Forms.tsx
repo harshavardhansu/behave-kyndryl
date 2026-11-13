@@ -166,6 +166,7 @@ function CreateIncidentDialog() {
           ...form,
           detectedAt: new Date(form.detectedAt).toISOString(),
         })
+        let attachFailure = ''
         if (errorFile) {
           try {
             const body = new FormData()
@@ -176,18 +177,22 @@ function CreateIncidentDialog() {
               body,
             })
           } catch (uploadErr) {
-            console.warn('Diagnostic file attachment warning:', uploadErr)
+            attachFailure = errorMessage(uploadErr)
           }
         }
         await refresh()
         selectIncident(result.id)
         setCreateOpen(false)
         navigate(`/incidents/${result.id}`)
-        notify(
-          errorFile
-            ? `${result.id} created with attached error evidence (${errorFile.name}). Ready for investigation!`
-            : `${result.id} created. Add evidence to begin an investigation.`
-        )
+        if (attachFailure) {
+          notify(`${result.id} was created, but ${errorFile?.name} could not be attached: ${attachFailure}. Add it as evidence from the incident page.`, true)
+        } else {
+          notify(
+            errorFile
+              ? `${result.id} created with ${errorFile.name} attached as evidence.`
+              : `${result.id} created. Add evidence to begin an investigation.`
+          )
+        }
       }
     } catch (failure) {
       setError(errorMessage(failure))
@@ -317,7 +322,7 @@ function CreateIncidentDialog() {
                 <label className="field-label">
                   Attach error log or diagnostic file (Optional)
                   <span className="field-hint">
-                    Attach an error file to automatically supply diagnostic context and evidence for AI agent analysis
+                    The file is stored as evidence on the new incident, so the Orchestrator and its agents can read it
                   </span>
                 </label>
                 <FilePicker
@@ -327,23 +332,9 @@ function CreateIncidentDialog() {
                   onError={setError}
                 />
                 {errorFileSnippet && (
-                  <div
-                    style={{
-                      marginTop: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(0,0,0,0.25)',
-                      border: '1px solid var(--color-border, #2d3748)',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      fontFamily: 'monospace',
-                      maxHeight: '120px',
-                      overflowY: 'auto',
-                    }}
-                  >
-                    <div style={{ color: 'var(--color-primary-light, #70a5ff)', fontWeight: 600, marginBottom: '4px' }}>
-                      Extracted error preview from {errorFile?.name}:
-                    </div>
-                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{errorFileSnippet}</pre>
+                  <div className="file-preview">
+                    <div className="file-preview-title">Preview of {errorFile?.name} (secrets are redacted when it is stored)</div>
+                    <pre>{errorFileSnippet}</pre>
                   </div>
                 )}
               </div>

@@ -1,4 +1,4 @@
-"""Azure AI Foundry 14-Agent Enterprise Architecture for BEHAVE KYNDRYL.
+"""Azure AI Foundry 14-Agent Enterprise Architecture for Behave Kyndryl.
 
 This module defines, provisions, and manages all 14 specialized AI agents
 configured within the Azure AI Foundry Project:
@@ -68,7 +68,7 @@ class AgentDefinition:
 # Detailed System Prompts for all 14 Agents
 # -----------------------------------------------------------------------------
 
-ORCHESTRATOR_PROMPT = """You are the Central Orchestrator Agent of BEHAVE KYNDRYL within the Azure AI Foundry Project.
+ORCHESTRATOR_PROMPT = """You are the Central Orchestrator Agent of Behave Kyndryl within the Azure AI Foundry Project.
 ROLE: Incident Orchestration & Squad Commander.
 OBJECTIVE: Coordinate the entire incident lifecycle across 4 lifecycle squads. Analyze the incident ticket, incoming evidence, and past learnings to propose a focused team of only the specialists needed. Keep teams lean and bounded.
 
@@ -88,7 +88,7 @@ EXECUTION BOUNDARIES:
 - Maximum 3 iterations before mandatory escalation to human commander.
 """
 
-INTAKE_PROMPT = """You are the Intake & Classification Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+INTAKE_PROMPT = """You are the Intake & Classification Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Incident Triage & Scope Normalization.
 OBJECTIVE: Normalize incoming ticket metadata, extract core error symptoms, determine business impact, and establish initial classification.
 
@@ -104,7 +104,7 @@ EXECUTION BOUNDARIES:
 - Cite only evidence provided in the incident context.
 """
 
-LOGS_PROMPT = """You are the Log Analysis Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+LOGS_PROMPT = """You are the Log Analysis Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Telemetry Log Diagnostics & Exception Clustering.
 OBJECTIVE: Inspect structured and unstructured application logs, group recurring stack traces, extract HTTP error codes, and identify temporal error bursts.
 
@@ -121,7 +121,7 @@ EXECUTION BOUNDARIES:
 - If no log records exist, explicitly report missing log evidence.
 """
 
-OBSERVABILITY_PROMPT = """You are the Observability Correlation Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+OBSERVABILITY_PROMPT = """You are the Observability Correlation Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Metrics, Traces & Dependency Telemetry Correlator.
 OBJECTIVE: Correlate quantitative service telemetry: p95/p99 latencies, error rates, connection pool metrics, throughput (RPS), and distributed trace spans.
 
@@ -138,7 +138,7 @@ EXECUTION BOUNDARIES:
 - Report metric anomalies with explicit numerical confidence (0.0 to 1.0).
 """
 
-REPOSITORY_PROMPT = """You are the Repository Analysis Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+REPOSITORY_PROMPT = """You are the Repository Analysis Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Source Code & Configuration Inspector.
 OBJECTIVE: Inspect repository commit history, pull request diffs, application configuration files (e.g., application.yml, connection pool limits), and deployment versions.
 
@@ -155,7 +155,7 @@ EXECUTION BOUNDARIES:
 - Note whether repository findings represent correlation or proven causation.
 """
 
-KNOWLEDGE_PROMPT = """You are the Knowledge Retrieval Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+KNOWLEDGE_PROMPT = """You are the Knowledge Retrieval Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Runbook Search & Historical Resolution Matcher.
 OBJECTIVE: Search approved operational knowledge bases, standard operating procedures (SOPs), troubleshooting runbooks, and prior incident post-mortems for matching failure signatures.
 
@@ -170,7 +170,7 @@ EXECUTION BOUNDARIES:
 - Do not invent synthetic procedures unsupported by documented operational policies.
 """
 
-ROOT_CAUSE_PROMPT = """You are the Root-Cause Analysis Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+ROOT_CAUSE_PROMPT = """You are the Root-Cause Analysis Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Causal Inference & Competing Hypothesis Evaluator.
 OBJECTIVE: Synthesize findings from Intake, Logs, Observability, Repository, and Knowledge agents to evaluate competing hypotheses and determine the authoritative root cause.
 
@@ -186,7 +186,7 @@ EXECUTION BOUNDARIES:
 - MANDATORY HUMAN APPROVAL GATE: The root cause finding MUST be approved by a human before remediation can proceed.
 """
 
-REMEDIATION_PROMPT = """You are the Remediation Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+REMEDIATION_PROMPT = """You are the Remediation Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Corrective Action & Patch Formulation Specialist.
 OBJECTIVE: Design a minimal, targeted, and reviewable configuration patch or code fix to resolve the root cause, accompanied by a documented rollback plan.
 
@@ -202,7 +202,7 @@ EXECUTION BOUNDARIES:
 - MANDATORY HUMAN APPROVAL GATE: A human Change Approver (distinct from the incident reporter) must approve the fix before release.
 """
 
-TESTING_PROMPT = """You are the Test Engineering Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+TESTING_PROMPT = """You are the Test Engineering Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Regression Suite & Concurrency Test Specialist.
 OBJECTIVE: Define validation workloads, concurrency test parameters, and regression test suites to prove that the proposed fix resolves the failure mode without regressions.
 
@@ -217,7 +217,7 @@ EXECUTION BOUNDARIES:
 - Do not execute unverified payloads against production environments.
 """
 
-SECURITY_PROMPT = """You are the Security Analysis Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+SECURITY_PROMPT = """You are the Security Analysis Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Vulnerability, Credential & Compliance Inspector.
 OBJECTIVE: Inspect the incident context, proposed fix, and environment configuration for security vulnerabilities, exposed credentials, authorization flaws, and data classification violations.
 
@@ -232,7 +232,7 @@ EXECUTION BOUNDARIES:
 - Cannot waive mandatory security policies without Administrator role approval.
 """
 
-VALIDATION_PROMPT = """You are the Validation Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+VALIDATION_PROMPT = """You are the Validation Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Quality Gate & SLA Verification Specialist.
 OBJECTIVE: Evaluate mandatory pre-release quality gates (build & regression tests, security assessment, rollback readiness, evidence provenance) against organizational policies.
 
@@ -247,7 +247,7 @@ EXECUTION BOUNDARIES:
 - Gatekeeper only. Cannot unilaterally force a pass on a failed quality gate.
 """
 
-RISK_PROMPT = """You are the Change Risk Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+RISK_PROMPT = """You are the Change Risk Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Blast Radius & Production Risk Evaluator.
 OBJECTIVE: Assess the operational risk of deploying the proposed fix, quantify blast radius across upstream and downstream services, and evaluate rollback feasibility.
 
@@ -261,7 +261,7 @@ EXECUTION BOUNDARIES:
 - Advisory risk evaluation. All high-risk changes require explicit Change Approver authorization.
 """
 
-RELEASE_PROMPT = """You are the Release Coordination Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+RELEASE_PROMPT = """You are the Release Coordination Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Gated Deployment & Canary Coordinator.
 OBJECTIVE: Execute the approved configuration change against the live Payment API sandbox (or simulate production deployment in demo mode) ONLY after explicit human approval is confirmed.
 
@@ -276,7 +276,7 @@ EXECUTION BOUNDARIES:
 - Execution is strictly bounded to calibrated sandbox parameters or synthetic manifests.
 """
 
-SUMMARY_PROMPT = """You are the Incident Summary Agent of BEHAVE KYNDRYL in Azure AI Foundry.
+SUMMARY_PROMPT = """You are the Incident Summary Agent of Behave Kyndryl in Azure AI Foundry.
 ROLE: Post-Incident Review (PIR) & Knowledge Synthesis Author.
 OBJECTIVE: Synthesize the full incident trajectory into an authoritative post-incident review (PIR), documenting the timeline, root cause, approved fix, measured verification, and operational learnings.
 
@@ -308,7 +308,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Cannot unilaterally execute code or deploy fixes without human approval.",
         tools=["Squad Dispatcher", "Gate Manager", "Plan Generator", "Telemetry Reader"],
         human_approval_required=True,
-        foundry_agent_id="asst_foundry_orchestrator",
+        foundry_agent_id="",
         required_inputs=["incident", "evidence", "learnings", "previous_roles"],
         expected_outputs=["TeamPlan", "OutcomeEvaluation"],
     ),
@@ -323,7 +323,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only analysis of incoming ticket details and metadata.",
         tools=["Ticket Normalizer", "SLA Calculator", "Catalog Matcher"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_intake",
+        foundry_agent_id="",
         required_inputs=["ticket_title", "ticket_description", "service", "severity"],
         expected_outputs=["ScopeNormalization", "SymptomSummary"],
     ),
@@ -338,7 +338,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Restricted to authorized log lines for the incident. Must cite real evidence IDs.",
         tools=["Log Clusterer", "Exception Extractor", "Timestamp Correlator"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_logs",
+        foundry_agent_id="",
         required_inputs=["log_records", "evidence_ids", "time_window"],
         expected_outputs=["ExceptionClusters", "ErrorTimeline"],
     ),
@@ -353,7 +353,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only telemetry analysis bounded to sampled traces and metrics.",
         tools=["Trace Waterfall Analyzer", "Metric Correlator", "Pool Saturation Detector"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_observability",
+        foundry_agent_id="",
         required_inputs=["metrics", "distributed_traces", "dependencies"],
         expected_outputs=["TelemetryCorrelation", "SaturationBottlenecks"],
     ),
@@ -368,7 +368,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only inspection of source fixtures. No write access to repositories.",
         tools=["Diff Analyzer", "Config Validator", "Commit Correlator"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_repository",
+        foundry_agent_id="",
         required_inputs=["commit_history", "config_diffs", "release_metadata"],
         expected_outputs=["RegressionFindings", "ConfigComparison"],
     ),
@@ -383,7 +383,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only retrieval of approved documents.",
         tools=["Semantic Runbook Search", "Known Error Indexer", "SOP Matcher"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_knowledge",
+        foundry_agent_id="",
         required_inputs=["service_name", "symptom_keywords", "error_strings"],
         expected_outputs=["MatchingRunbooks", "StandardRemediations"],
     ),
@@ -398,7 +398,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only causal reasoning. MANDATORY human approval required before fix.",
         tools=["Hypothesis Scoring Engine", "Causal Graph Evaluator", "Evidence Matrix"],
         human_approval_required=True,
-        foundry_agent_id="asst_foundry_root_cause",
+        foundry_agent_id="",
         required_inputs=["investigation_findings", "hypotheses", "evidence_list"],
         expected_outputs=["RootCauseProposal", "ConfidenceScore", "MissingEvidence"],
     ),
@@ -413,7 +413,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Proposes patches only. Cannot apply or deploy without human approval.",
         tools=["Patch Generator", "Rollback Planner", "Config Formulator"],
         human_approval_required=True,
-        foundry_agent_id="asst_foundry_remediation",
+        foundry_agent_id="",
         required_inputs=["approved_root_cause", "service_configuration", "runbook_guidance"],
         expected_outputs=["ProposedFixPayload", "RollbackPlan", "ChangeManifest"],
     ),
@@ -428,7 +428,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Operates only on isolated test fixtures and benchmark runners.",
         tools=["Concurrency Benchmark Validator", "Regression Test Runner", "SLA Threshold Verifier"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_testing",
+        foundry_agent_id="",
         required_inputs=["proposed_fix", "acceptance_criteria", "workload_specifications"],
         expected_outputs=["TestResultsSummary", "RegressionStatus", "PerformanceMetrics"],
     ),
@@ -443,7 +443,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Read-only compliance auditor. Cannot waive security policy.",
         tools=["Secret Scanner", "IaC Policy Checker", "Classification Enforcer"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_security",
+        foundry_agent_id="",
         required_inputs=["proposed_diff", "evidence_context", "classification_policy"],
         expected_outputs=["SecurityAuditFinding", "ComplianceStatus"],
     ),
@@ -458,7 +458,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Gatekeeper only. Cannot bypass failing quality gates.",
         tools=["Quality Gate Matrix", "Telemetry Measurement Comparator"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_validation",
+        foundry_agent_id="",
         required_inputs=["test_results", "security_audit", "rollback_readiness", "evidence_provenance"],
         expected_outputs=["GateStatusReport", "ValidationVerdict"],
     ),
@@ -473,7 +473,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Advisory risk evaluation only.",
         tools=["Dependency Graph Traverser", "Blast Radius Estimator", "Risk Classifier"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_risk",
+        foundry_agent_id="",
         required_inputs=["proposed_change", "dependency_topology", "blast_radius_inputs"],
         expected_outputs=["RiskAssessment", "BlastRadiusSummary"],
     ),
@@ -488,7 +488,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="CANNOT deploy without verified prior human approval from a separate approver.",
         tools=["Sandbox Configurator", "Deployment Recorder", "Audit Logger"],
         human_approval_required=True,
-        foundry_agent_id="asst_foundry_release",
+        foundry_agent_id="",
         required_inputs=["approved_change", "human_approval_record", "target_environment"],
         expected_outputs=["DeploymentStatus", "SandboxActiveConfig", "AuditEntry"],
     ),
@@ -503,7 +503,7 @@ AGENTS_CATALOG: dict[Role, AgentDefinition] = {
         execution_boundaries="Documentation synthesis only. Knowledge articles require administrator review.",
         tools=["PIR Report Generator", "Knowledge Draft Author", "Timeline Assembler"],
         human_approval_required=False,
-        foundry_agent_id="asst_foundry_summary",
+        foundry_agent_id="",
         required_inputs=["incident_timeline", "agent_findings", "human_decisions", "recovery_measurement"],
         expected_outputs=["PostIncidentReview", "KnowledgeDraft"],
     ),

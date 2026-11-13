@@ -26,8 +26,9 @@ from .domain import ActionInput, DataClassification, EvidenceInput, IncidentInpu
 from .payment_sandbox import PaymentSandboxControl, PaymentSandboxControlAdapter
 from .providers import Assessment, ProviderError, configured_provider, validate_references
 from .seed import fresh_workspace, seed_workspace
-from .ai_client import AIBudget, ai_configured, key_mode
-from .foundry_agents import export_agent_manifests, get_all_agents
+from .ai_client import AIBudget, AIUnavailable, ai_configured, key_mode
+from .foundry_agents import get_all_agents
+from .foundry_runtime import FoundryAgentService, foundry_agent_status
 from .foundry_brain import FoundryBrain
 from .mission import DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
@@ -128,7 +129,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
 
     application = FastAPI(
         title="Behave Kyndryl API",
-        description="Behave Kyndryl 14-Agent Intelligent AI Architecture with Azure AI Foundry & OpenAI Central Brain",
+        description="Behave Kyndryl: an Orchestrator forms a team of specialist agents per incident; humans approve every important decision.",
         version="1.0.0",
         lifespan=lifespan,
         docs_url="/api/docs",
@@ -287,14 +288,24 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.get("/api/v1/foundry/agents")
     def list_foundry_agents(auth: Auth):
         require(auth["user"], "read")
-        return {
-            "agents": export_agent_manifests(),
-            "total": 14,
-            "projectEndpoint": config.azure_ai_project_endpoint or "https://odl-user-2443936-1468-resource.services.ai.azure.com/api/projects/odl-user-2443936-1468",
-            "modelDeployment": config.azure_ai_model_deployment or "gpt-4.1-mini",
-            "centralBrain": "OpenAI Central Intelligence",
-            "status": "Configured in Azure AI Foundry" if ai_configured(config) else "Simulated planner fallback",
-        }
+        return foundry_agent_status(config, database)
+
+    class FoundrySyncInput(StrictModel):
+        roles: list[str] = Field(default_factory=list, max_length=14)
+        force: bool = False
+
+    @application.post("/api/v1/foundry/agents/sync")
+    def sync_foundry_agents(payload: FoundrySyncInput, auth: Auth):
+        """Create or update the agents in the Azure AI Foundry project (needs Microsoft Entra sign-in)."""
+        require(auth["user"], "admin:write")
+        service = application.state.mission_brain.agents if hasattr(application.state.mission_brain, "agents") else FoundryAgentService(config, database)
+        try:
+            results = service.provision(payload.roles or None, payload.force)
+        except AIUnavailable as error:
+            raise HTTPException(503, str(error)) from None
+        created = [item for item in results if item["action"] != "unchanged"]
+        database.mutate(lambda state: audit(state, auth["user"], "Foundry agents synced", "foundry", next_state=f"{len(created)} created or updated, {len(results) - len(created)} unchanged"))
+        return {**foundry_agent_status(config, database), "results": results}
 
     @application.post("/api/v1/incidents", status_code=201)
     def create_incident(payload: IncidentInput, auth: Auth):
@@ -735,7 +746,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             if "example.invalid" in payload.url or payload.url == "https://example.invalid/private/repo":
                 raise HTTPException(503, "Repository adapter not configured. No URL was accessed. Configure a read-only application identity and repository allowlist before analysis.")
         elif payload.source == "fixture":
-            if config.mode not in ("demo", "fresh"):
+            if config.mode != "demo":
                 raise HTTPException(409, "Synthetic repository replay is available only in the demo workspace.")
             if payload.stack != "Java / Spring Boot":
                 raise HTTPException(422, "The supplied fixture is Java / Spring Boot only. Other stacks require an authorized repository adapter.")
@@ -762,10 +773,14 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 audit_action = "Synthetic source analysis replayed"
             else:
                 findings = generate_repository_findings(payload.url, payload.stack, payload.scope, payload.branch, payload.commit)
-                source_label = f"Authorized repository ({payload.url})"
-                status_label = "Completed (14-Agent Engine)"
-                limitations_msg = f"14-Agent Repository Intelligence scan completed across {len(payload.scope)} scopes. Multi-agent static analysis evaluated code paths, configuration, tests, dependencies, and security boundaries. Read-only analysis without remote shell execution."
-                audit_action = "Repository source analysis completed"
+                source_label = f"Repository URL (not accessed): {payload.url}"
+                status_label = "Template findings (SIMULATED)"
+                limitations_msg = (
+                    f"SIMULATED: these are template findings for the {payload.stack} stack across {len(payload.scope)} scope(s). "
+                    "The repository was not cloned or read, no code was analysed and no AI agent was run. "
+                    "Connect an authorized read-only repository adapter for real analysis."
+                )
+                audit_action = "Template repository findings generated (simulated)"
 
             record = {
                 "id": identifier("ANL"),
@@ -807,7 +822,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         result = analyze_github_file(payload.fileName, payload.content, payload.repoName, payload.scope, getattr(application.state, "mission_brain", None))
         pdf_bytes = generate_repo_analysis_pdf(result)
         database.mutate(lambda state: audit(state, auth["user"], "GitHub analysis PDF exported", payload.fileName))
-        clean_name = payload.fileName.replace("/", "_").replace("\\", "_")
+        clean_name = re.sub(r"[^A-Za-z0-9._-]+", "_", payload.fileName)[:80] or "file"
         return Response(
             pdf_bytes,
             media_type="application/pdf",
@@ -817,6 +832,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.get("/api/v1/incidents/{incident_id}/resolution-report")
     def incident_resolution_report(incident_id: str, auth: Auth):
         """Generate a detailed Post-Incident Review (PIR) and resolution report confirming if attached error files are resolved."""
+        require(auth["user"], "export")
         state = database.read()
         incident = find(state, "incidents", incident_id)
         report = generate_resolution_report(incident, state)
@@ -826,6 +842,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.get("/api/v1/incidents/{incident_id}/resolution-report/pdf")
     def incident_resolution_report_pdf(incident_id: str, auth: Auth):
         """Generate and stream a publication-quality Post-Incident Review (PIR) PDF report."""
+        require(auth["user"], "export")
         state = database.read()
         incident = find(state, "incidents", incident_id)
         pdf_bytes = generate_incident_resolution_pdf(incident, state)

@@ -28,6 +28,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useWorkspace } from '../context'
+import { FoundryAgentsPanel } from '../components/war-room/FoundryAgentsPanel'
 import { post, request } from '../lib/api'
 import { errorMessage } from '../lib/format'
 import type { Integration, Policy, Service, Session } from '../types'
@@ -370,6 +371,7 @@ export function Administration() {
           'Integrations',
           'Users & access',
           'Agent policies',
+          'Foundry agents',
           'Workspace',
           'Service catalog',
           'Retention & redaction',
@@ -486,6 +488,7 @@ export function Administration() {
         </>
       )}
       {tab === 'Agent policies' && <PolicyEditor key={session.user.id} />}
+      {tab === 'Foundry agents' && <FoundryAgentsPanel />}
       {tab === 'Workspace' && (
         <div className="admin-workspace-grid">
           <section>

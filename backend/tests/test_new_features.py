@@ -102,8 +102,9 @@ def test_repository_analysis_with_14_agent_engine(client):
     response = client.post("/api/v1/repositories/analyses", json=valid_payload)
     assert response.status_code == 201
     data = response.json()
-    assert data["source"] == "Authorized repository (https://github.com/northstar/payment-service)"
-    assert data["status"] == "Completed (14-Agent Engine)"
+    assert data["source"] == "Repository URL (not accessed): https://github.com/northstar/payment-service"
+    assert data["status"] == "Template findings (SIMULATED)"
+    assert "SIMULATED" in data["limitations"] and "not cloned" in data["limitations"]
     assert len(data["findings"]) == 5
     assert any(f["category"] == "Security" for f in data["findings"])
     assert any(f["category"] == "Configuration" for f in data["findings"])

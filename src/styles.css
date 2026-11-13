@@ -7260,3 +7260,87 @@ button.metric:hover {
     color: #6f6f6f;
     line-height: 1.45;
 }
+
+/* Attached-file preview in the incident form */
+.file-preview {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border: 1px solid #e3e3e3;
+    border-radius: 4px;
+    background: #f8f8f8;
+    font-size: 11px;
+}
+
+.file-preview-title {
+    margin-bottom: 4px;
+    color: var(--accent, #29707a);
+    font-weight: 500;
+}
+
+.file-preview pre {
+    max-height: 120px;
+    margin: 0;
+    overflow-y: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Foundry agents panel (Administration) */
+.foundry-panel {
+    display: grid;
+    gap: 14px;
+}
+
+.foundry-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.foundry-head h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.foundry-head h3 svg {
+    color: var(--accent, #29707a);
+}
+
+.foundry-head p {
+    margin: 2px 0;
+    font-size: 12px;
+}
+
+.foundry-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.foundry-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.foundry-table th,
+.foundry-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eeeeee;
+    text-align: left;
+}
+
+.foundry-table th {
+    color: #525252;
+    font-weight: 500;
+}
+
+.foundry-table small {
+    color: #8c8c8c;
+}

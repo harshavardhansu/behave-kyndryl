@@ -80,7 +80,7 @@ export async function downloadReport(
   const url = URL.createObjectURL(await response.blob())
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `BEHAVE KYNDRYL-${incidentId || 'workspace'}.${format}`
+  anchor.download = `Behave-Kyndryl-${incidentId || 'workspace'}.${format}`
   anchor.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

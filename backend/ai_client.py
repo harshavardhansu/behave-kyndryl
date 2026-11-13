@@ -45,6 +45,22 @@ def validate_openai_endpoint(endpoint: str) -> str:
     return endpoint.rstrip("/") + "/"
 
 
+def entra_credential(settings: Settings):
+    """Microsoft Entra credential: a service principal when AZURE_TENANT_ID/CLIENT_ID/CLIENT_SECRET are set, otherwise az login / managed identity."""
+    secret = settings.azure_client_secret.get_secret_value()
+    if settings.azure_tenant_id and settings.azure_client_id and secret:
+        from azure.identity import ClientSecretCredential
+
+        return ClientSecretCredential(settings.azure_tenant_id, settings.azure_client_id, secret)
+    from .azure_login import CachedUserCredential, signed_in
+
+    if signed_in():
+        return CachedUserCredential(settings.azure_tenant_id)
+    from azure.identity import DefaultAzureCredential
+
+    return DefaultAzureCredential(managed_identity_client_id=settings.azure_client_id or None, exclude_interactive_browser_credential=True, process_timeout=5)
+
+
 @contextmanager
 def openai_client(settings: Settings) -> Iterator[object]:
     """Yield an OpenAI-compatible client for the configured Azure resource."""
@@ -63,9 +79,8 @@ def openai_client(settings: Settings) -> Iterator[object]:
             client.close()
         return
     from azure.ai.projects import AIProjectClient
-    from azure.identity import DefaultAzureCredential
 
-    with DefaultAzureCredential(managed_identity_client_id=settings.azure_client_id or None, exclude_interactive_browser_credential=True, process_timeout=5) as credential:
+    with entra_credential(settings) as credential:
         with AIProjectClient(endpoint=settings.azure_ai_project_endpoint, credential=credential) as project:
             with project.get_openai_client() as client:
                 yield client.with_options(timeout=30.0, max_retries=1)

@@ -154,7 +154,7 @@ export function Testing() {
       await refresh()
       setRecordOpen(false)
       notify(
-        'Test evidence recorded with its source. BEHAVE KYNDRYL did not execute these tests.'
+        'Test evidence recorded with its source. Behave Kyndryl did not execute these tests.'
       )
     } catch (failure) {
       setError(errorMessage(failure))
@@ -525,7 +525,7 @@ export function Testing() {
               />
             </label>
             <Notice title="Manual provenance">
-              This records a reported result; it does not claim that BEHAVE KYNDRYL
+              This records a reported result; it does not claim that Behave Kyndryl
               executed a test. Failed required checks block approval.
             </Notice>
             {error && (

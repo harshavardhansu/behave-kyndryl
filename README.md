@@ -1,4 +1,4 @@
-# BEHAVE KYNDRYL
+# Behave Kyndryl
 
 **Your Problem. Their Mission.** An AI incident-response workspace where an **Orchestrator agent** analyses each ticket, forms a **team of only the specialist agents it needs**, and works the problem step by step. **A human approves every important decision.** If the first attempt doesn't resolve the issue, the next iteration builds on what was learned.
 
@@ -65,6 +65,19 @@ AGENTICA_AI_MAX_OUTPUT_TOKENS=900
 
 Restart the backend. Missions then show **AI-GENERATED**, and the mission panel shows calls and tokens used today. Microsoft Entra ID sign-in (`AZURE_AI_PROJECT_ENDPOINT`) is also supported.
 
+### Run the 14 agents in Azure AI Foundry (optional)
+
+The 14 agent roles can be created as real agents in your Azure AI Foundry project (`behave-orchestrator`, `behave-logs`, …) and then run the missions. Foundry agents need **Microsoft Entra sign-in**, not an API key.
+
+```bash
+az login                                   # sign in with an account that has the "Azure AI User" role on the project
+# .env: AZURE_AI_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>
+#       AZURE_AI_MODEL_DEPLOYMENT=gpt-4.1-mini
+.venv/bin/python -m backend.foundry_provision          # creates the 14 agents (safe to re-run), or use Administration → Foundry agents → Sync
+```
+
+The status of every agent (created or not, version, runs) is shown in **Administration → Foundry agents**. Until the agents are created, missions run on the plain Azure OpenAI model, and results are labelled with who produced them. `AGENTICA_AGENT_MODE=model` forces the model even when the agents exist.
+
 **Safety rules for the AI:**
 - the AI only reads the ticket and its evidence, and cannot approve, deploy or execute anything;
 - answers must match strict formats, and are checked against the real agent roles and evidence IDs;
@@ -130,6 +143,7 @@ The tests never call Azure: they use the simulated planner and a fake AI client.
 - A single demo workspace with demo identities; this is not production-ready (no multi-tenancy, migrations or hardened security).
 - Agents reason over the evidence they're given. They have no tools of their own yet (e.g. querying logs directly).
 - The only real change an agent mission can make is the human-approved Payment API sandbox fix. Everything else is simulated and labelled as such.
+- Repository URL analysis returns clearly labelled **simulated template findings** (no repository is cloned); GitHub file analysis is rule-based, not AI.
 - The Payment API sandbox can also run in containers (`PAYMENT_SANDBOX_MODE=container`, see `compose.yaml`).
 
 More detail: [final_overview.md](final_overview.md) · [docs/architecture.md](docs/architecture.md) · [docs/implementation-roadmap.md](docs/implementation-roadmap.md)

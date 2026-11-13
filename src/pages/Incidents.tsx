@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
@@ -350,8 +351,7 @@ export function IncidentDetail() {
     notify,
   } = useWorkspace()
   const [tab, setTab] = useState('Overview')
-  const [resolutionReport, setResolutionReport] = useState<any>(null)
-  const [reportBusy, setReportBusy] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
   const [reportCopied, setReportCopied] = useState(false)
 
   const incident = data.incidents.find((record) => record.id === id)
@@ -359,15 +359,16 @@ export function IncidentDetail() {
     if (id && incident && selectedIncidentId !== id) selectIncident(id)
   }, [id, incident, selectedIncidentId, selectIncident])
 
-  useEffect(() => {
-    if (tab === 'Resolution report' && incident) {
-      setReportBusy(true)
-      request<any>(`/incidents/${incident.id}/resolution-report`)
-        .then((res) => setResolutionReport(res))
-        .catch((err) => console.warn('Resolution report fetch:', err))
-        .finally(() => setReportBusy(false))
-    }
-  }, [tab, incident?.id])
+  const reportQuery = useQuery({
+    queryKey: ['resolution-report', id],
+    queryFn: () =>
+      request<{ reportMarkdown: string; passRate?: number; passedChecks?: number; totalChecks?: number }>(
+        `/incidents/${id}/resolution-report`
+      ),
+    enabled: tab === 'Resolution report' && Boolean(incident),
+  })
+  const resolutionReport = reportQuery.data ?? null
+  const reportBusy = reportQuery.isFetching || pdfBusy
 
   function downloadResolutionReport() {
     if (!resolutionReport) return
@@ -382,7 +383,7 @@ export function IncidentDetail() {
 
   async function downloadResolutionReportPdf() {
     if (!incident?.id) return
-    setReportBusy(true)
+    setPdfBusy(true)
     try {
       const blob = await downloadBlob(`/incidents/${incident.id}/resolution-report/pdf`)
       const url = URL.createObjectURL(blob)
@@ -395,7 +396,7 @@ export function IncidentDetail() {
     } catch (err) {
       notify(`PDF download error: ${errorMessage(err)}`, true)
     } finally {
-      setReportBusy(false)
+      setPdfBusy(false)
     }
   }
 
@@ -904,13 +905,13 @@ export function IncidentDetail() {
               <Metric
                 label="Error Resolution State"
                 value={incident.status === 'Resolved' || incident.status === 'Closed' ? 'Verified Resolved' : 'Investigating'}
-                detail={incident.status === 'Resolved' || incident.status === 'Closed' ? 'Quality gates passed 100%' : 'Active analysis'}
+                detail={incident.status === 'Resolved' || incident.status === 'Closed' ? 'Recovery recorded on this incident' : 'Active analysis'}
                 icon={CheckCircle2}
               />
               <Metric
                 label="Validation Checks Pass Rate"
-                value={`${resolutionReport?.passRate?.toFixed(1) ?? '100.0'}%`}
-                detail={`${resolutionReport?.passedChecks ?? tests.length} / ${resolutionReport?.totalChecks ?? tests.length} checks passed`}
+                value={resolutionReport ? `${resolutionReport.passRate?.toFixed(1) ?? '0.0'}%` : '–'}
+                detail={resolutionReport ? `${resolutionReport.passedChecks ?? 0} / ${resolutionReport.totalChecks ?? 0} recorded checks passed` : reportQuery.isError ? 'Report could not be loaded' : 'Loading the report…'}
                 icon={ShieldCheck}
               />
               <Metric
@@ -1009,7 +1010,7 @@ export function IncidentDetail() {
                   wordBreak: 'break-all',
                 }}
               >
-                {resolutionReport?.reportMarkdown || 'Generating comprehensive resolution report...'}
+                {resolutionReport?.reportMarkdown || (reportQuery.isError ? 'The resolution report could not be loaded.' : 'Generating the resolution report…')}
               </pre>
             </details>
           </div>

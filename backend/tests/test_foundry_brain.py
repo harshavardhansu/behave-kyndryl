@@ -76,7 +76,8 @@ PLAN = {
 WORK = {"findings": [
     {"role": "logs", "summary": "Timeouts in checkout logs.", "evidence_ids": ["EVD-301", "EVD-999"], "confidence": 1.7},
 ]}
-OUTCOME = {"resolved": False, "detail": "No validation plan yet.", "recommendation": "iterate", "missing": ["validation", "logs"]}
+OUTCOME = {"resolved": False, "detail": "No validation plan yet.", "recommendation": "iterate", "missing": ["validation", "logs"],
+           "validation": {"technical_correctness": True, "completeness": False, "cross_agent_consistency": True, "security_and_risk_acceptable": True, "human_approval_satisfied": True, "summary": "Validation missing."}}
 
 
 def brain_and_context(store_settings):
@@ -91,7 +92,7 @@ def test_plan_is_validated_and_completed(fake):
     fake({"TeamPlan": PLAN})
     brain, context, _ = brain_and_context(settings())
     plan = brain.plan(context, 1, [], [])
-    assert plan["source"] == "AI-GENERATED"
+    assert plan["source"].startswith("AI-GENERATED /")
     assert [item["role"] for item in plan["selected"]] == ["logs", "root-cause", "remediation"]
     assert {item["role"] for item in plan["selected"]} | {item["role"] for item in plan["skipped"]} == set(SPECIALISTS)
     assert next(item for item in plan["skipped"] if item["role"] == "security")["reason"] == "No security signal"
@@ -159,7 +160,7 @@ def test_mission_runs_end_to_end_with_ai_brain(fake):
         snapshot = client.get("/api/v1/workspace").json()
         assert "aiCache" not in snapshot and snapshot["aiMode"].startswith("AI-GENERATED")
         mission = next(item for item in snapshot["missions"] if item["id"] == mission_id)
-        assert mission["mode"].startswith("AI-GENERATED") and mission["iterations"][0]["plan"]["source"] == "AI-GENERATED"
+        assert mission["mode"].startswith("AI-GENERATED") and mission["iterations"][0]["plan"]["source"].startswith("AI-GENERATED")
         assert "brainCache" not in mission
         gate = mission["pendingGate"]
         assert client.post(f"/api/v1/missions/{mission_id}/decision", json={"gateId": gate["id"], "decision": "approve"}).status_code == 200
@@ -167,3 +168,11 @@ def test_mission_runs_end_to_end_with_ai_brain(fake):
         assert mission["pendingGate"]["type"] == "root-cause"
         assert azure.calls == ["TeamPlan", "StepFindings", "StepFindings"]
         assert snapshot["aiUsage"]["calls"] == 1
+
+
+def test_outcome_tolerates_invented_missing_roles():
+    from backend.foundry_brain import Outcome
+
+    report = {"technical_correctness": True, "completeness": False, "cross_agent_consistency": True, "security_and_risk_acceptable": True, "human_approval_satisfied": False, "summary": "s"}
+    outcome = Outcome.model_validate({"resolved": False, "detail": "d", "recommendation": "iterate", "missing": ["testing", "human_approval"], "validation": report})
+    assert outcome.missing == ["testing", "human_approval"]

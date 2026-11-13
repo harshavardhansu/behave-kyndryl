@@ -49,7 +49,7 @@ def test_all_14_agents_defined_and_configured():
         assert len(agent.system_prompt) > 100, f"System prompt for {agent.role} is too brief"
         assert agent.execution_boundaries, f"Agent {agent.role} missing boundaries"
         assert len(agent.tools) > 0, f"Agent {agent.role} missing tools"
-        assert agent.foundry_agent_id.startswith("asst_foundry_")
+        assert agent.foundry_agent_id == ""  # assigned only once the agent is created in Foundry
 
 
 def test_human_approval_gate_requirements():
@@ -94,8 +94,9 @@ def test_foundry_agents_api_endpoint(test_app):
         data = res.json()
         assert data["total"] == 14
         assert len(data["agents"]) == 14
-        assert data["centralBrain"] == "OpenAI Central Intelligence"
-        assert "projectEndpoint" in data
+        assert data["provisioned"] == 0 and data["mode"] in {"simulated", "model"}
+        assert "projectEndpoint" not in data  # no hard-coded or leaked endpoints
+        assert all(item["provisioned"] is False and item["foundryName"].startswith("behave-") for item in data["agents"])
 
 
 def test_orchestrator_brain_fallback_and_structure(test_app):

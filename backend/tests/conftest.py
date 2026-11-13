@@ -12,5 +12,6 @@ for name in (
     "AZURE_AI_MODEL_DEPLOYMENT",
     "AZURE_OPENAI_ENDPOINT",
     "AZURE_OPENAI_API_KEY",
+    "AZURE_CLIENT_SECRET",
 ):
     os.environ[name] = ""
