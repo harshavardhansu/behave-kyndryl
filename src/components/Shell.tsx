@@ -680,14 +680,19 @@ export function Shell() {
                 <ArrowRight size={16} />
               </button>
             ))}
-          <a href="/api/docs" target="_blank" rel="noreferrer">
+          <button
+            onClick={() => {
+              navigate('/api-reference')
+              setHelpOpen(false)
+            }}
+          >
             <GitBranch size={18} />
             <span>
               <strong>API reference</strong>
-              <small>Versioned API / OpenAPI</small>
+              <small>Interactive console / OpenAPI</small>
             </span>
             <ArrowRight size={16} />
-          </a>
+          </button>
           <button
             onClick={() => {
               navigate('/administration')

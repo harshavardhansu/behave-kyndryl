@@ -36,3 +36,6 @@ playwright-report/
 # Local-only environments and tool settings
 .venv-windows/
 .claude/
+
+# Generated demo videos
+demo-video/

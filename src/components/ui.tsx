@@ -158,7 +158,7 @@ export function PageHeader({
 export function BrandMark() {
   return (
     <span className="brand-mark">
-      <span className="brand-product">behave</span>{' '}
+      <span className="brand-product">Behave</span>{' '}
       <span className="brand-kyndryl">kyndryl</span>
     </span>
   )

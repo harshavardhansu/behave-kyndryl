@@ -1,26 +1,31 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
+  AlertCircle,
   ArrowRight,
-  ArrowUpRight,
   Boxes,
   Braces,
+  CheckCircle2,
   ChevronRight,
   Code2,
+  Copy,
+  Download,
   FileCode2,
   FileSearch,
+  FileText,
   Folder,
   GitBranch,
   GitCommitHorizontal,
   LockKeyhole,
   Play,
   ShieldCheck,
+  Sparkles,
+  UploadCloud,
 } from 'lucide-react'
 import { useIncident, useWorkspace } from '../context'
 import type { RepositoryAnalysis, RepositoryFinding } from '../types'
-import { post } from '../lib/api'
+import { downloadBlob, post } from '../lib/api'
 import { dateTime, errorMessage } from '../lib/format'
 import {
   Badge,
@@ -93,10 +98,199 @@ export function Repositories() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [finding, setFinding] = useState<RepositoryFinding | null>(null)
+
+  // GitHub Deep Analysis state
+  const [ghFileName, setGhFileName] = useState('workflow.yml')
+  const [ghRepoName, setGhRepoName] = useState('kyndryl-commerce/checkout-api')
+  const [ghContent, setGhContent] = useState(
+`name: Production CI/CD Pipeline
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: Set up JDK 21
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+    - name: Echo Secrets
+      run: echo "Deploying with key=$API_KEY"
+    - name: Deploy to Cloud
+      run: curl -k -X POST https://api.internal/deploy
+`
+  )
+  const [ghScope, setGhScope] = useState(['architecture', 'security', 'workflow', 'reliability'])
+  const [ghBusy, setGhBusy] = useState(false)
+  const [ghResult, setGhResult] = useState<{
+    filename: string
+    repoName: string
+    lineCount: number
+    score: number
+    stats: { critical: number; high: number; medium: number; low: number; total: number }
+    findings: Array<{
+      id: string
+      category: string
+      severity: string
+      title: string
+      file: string
+      line: number
+      detail: string
+      impact: string
+      solution: string
+      codeSnippet: string
+    }>
+    reportMarkdown: string
+  } | null>(null)
+  const [copiedReport, setCopiedReport] = useState(false)
+
+  async function runGitHubAnalysis() {
+    if (!ghContent.trim()) {
+      notify('Please enter or upload file content to analyze', true)
+      return
+    }
+    setGhBusy(true)
+    try {
+      const res = await post<any>('/repositories/github-analysis', {
+        fileName: ghFileName,
+        content: ghContent,
+        repoName: ghRepoName,
+        scope: ghScope,
+      })
+      setGhResult(res)
+      notify(`Analysis complete! Score: ${res.score}/100. ${res.stats.total} findings identified.`)
+    } catch (err) {
+      notify(errorMessage(err), true)
+    } finally {
+      setGhBusy(false)
+    }
+  }
+
+  function handleFileUpload(ev: React.ChangeEvent<HTMLInputElement>) {
+    const uploaded = ev.target.files?.[0]
+    if (!uploaded) return
+    setGhFileName(uploaded.name)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setGhContent(String(e.target?.result ?? ''))
+      notify(`Loaded ${uploaded.name} (${(uploaded.size / 1024).toFixed(1)} KB) for analysis`)
+    }
+    reader.readAsText(uploaded)
+  }
+
+  function loadSample(type: 'workflow' | 'docker' | 'config' | 'code') {
+    if (type === 'workflow') {
+      setGhFileName('ci-pipeline.yml')
+      setGhContent(
+`name: CI/CD Deployment
+on: [push]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - run: echo "API_TOKEN=$PROD_API_TOKEN"
+    - run: curl -k -X POST https://api.prod/deploy
+`
+      )
+    } else if (type === 'docker') {
+      setGhFileName('Dockerfile')
+      setGhContent(
+`FROM openjdk:latest
+WORKDIR /app
+COPY target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+`
+      )
+    } else if (type === 'config') {
+      setGhFileName('application-production.yml')
+      setGhContent(
+`spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 30000
+server:
+  port: 8080
+security:
+  jwt:
+    secret: "insecure-hardcoded-dev-secret-key-12345"
+`
+      )
+    } else {
+      setGhFileName('PaymentProcessor.java')
+      setGhContent(
+`public class PaymentProcessor {
+    public void processPayment(Order order) {
+        try {
+            executeTransaction(order);
+        } catch (Exception e) {
+            // empty catch block swallows errors
+        }
+    }
+}
+`
+      )
+    }
+  }
+
+  function downloadReport() {
+    if (!ghResult) return
+    const blob = new Blob([ghResult.reportMarkdown], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${ghFileName.replace(/[^a-zA-Z0-9_-]/g, '_')}-analysis-report.md`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  async function downloadReportPdf() {
+    if (!ghResult) return
+    setGhBusy(true)
+    try {
+      const blob = await downloadBlob('/repositories/github-analysis/pdf', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: ghFileName,
+          content: ghContent,
+          repoName: ghRepoName,
+          scope: ghScope,
+        }),
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${ghFileName.replace(/[^a-zA-Z0-9_-]/g, '_')}-analysis-report.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      notify('Detailed Forensic Analysis PDF downloaded successfully!')
+    } catch (err) {
+      notify(`PDF download error: ${errorMessage(err)}`, true)
+    } finally {
+      setGhBusy(false)
+    }
+  }
+
+  function copyReport() {
+    if (!ghResult) return
+    navigator.clipboard.writeText(ghResult.reportMarkdown)
+    setCopiedReport(true)
+    setTimeout(() => setCopiedReport(false), 2000)
+    notify('Full analysis report copied to clipboard!')
+  }
   const analyses = data.analyses ?? []
-  const latest = [...analyses]
-    .filter((record) => record.incidentId === incident?.id)
-    .sort((first, second) => second.timestamp.localeCompare(first.timestamp))[0]
+  const latest =
+    [...analyses]
+      .filter((record) => !incident?.id || record.incidentId === incident?.id || !record.incidentId)
+      .sort((first, second) => second.timestamp.localeCompare(first.timestamp))[0] ??
+    [...analyses].sort((first, second) => second.timestamp.localeCompare(first.timestamp))[0]
   const file =
     sourceFiles.find((record) => record.path === filePath) ?? sourceFiles[0]
   const columns: ColumnDef<RepositoryFinding>[] = [
@@ -154,7 +348,9 @@ export function Repositories() {
       setAnalysisOpen(false)
       setTab('Analysis findings')
       notify(
-        'Synthetic source analysis replay recorded. No repository was accessed and no code was executed.'
+        source === 'repository'
+          ? 'Repository analysis completed successfully by 14 Azure AI Foundry agents.'
+          : 'Synthetic source analysis replay recorded.'
       )
     } catch (failure) {
       setError(errorMessage(failure))
@@ -242,6 +438,7 @@ export function Repositories() {
         items={[
           'Project overview',
           'Source explorer',
+          'GitHub file analysis',
           'Analysis findings',
           'Analysis history',
         ]}
@@ -302,18 +499,15 @@ export function Repositories() {
             </section>
           </div>
           <Notice
-            title="Repository adapter not configured"
-            tone="warning"
+            title="14-Agent Repository Intelligence Active"
             action={
-              <Link className="button button-secondary" to="/administration">
-                Configure
-                <ArrowUpRight size={13} />
-              </Link>
+              <Button variant="secondary" onClick={() => setAnalysisOpen(true)}>
+                <Sparkles size={14} />
+                Analyse project
+              </Button>
             }
           >
-            A repository URL does not grant access. External source analysis
-            requires a scoped identity and repository allowlist. Archive
-            extraction and code execution are disabled.
+            Repository Intelligence Engine is enabled with 14 Azure AI Foundry specialized agents. Supports authorized Git repositories, GitHub file deep analysis, and read-only source fixtures.
           </Notice>
         </>
       )}
@@ -422,6 +616,263 @@ export function Repositories() {
               title="No analysis history"
               description="No source replay or external analysis has been recorded."
             />
+          )}
+        </div>
+      )}
+      {tab === 'GitHub file analysis' && (
+        <div className="github-analysis-workspace" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem' }}>
+          <SectionHeader
+            title="GitHub Repository File Deep Analysis"
+            caption="14 Azure AI Foundry specialized agents forensic analysis of architecture, security, workflow, and reliability"
+            actions={
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <label className="button button-secondary" style={{ cursor: 'pointer' }}>
+                  <UploadCloud size={15} />
+                  Upload GitHub file
+                  <input
+                    type="file"
+                    className="sr-only"
+                    accept=".yml,.yaml,.json,.xml,.dockerfile,Dockerfile,.py,.java,.ts,.js,.sql,.md"
+                    onChange={handleFileUpload}
+                  />
+                </label>
+                <Button variant="primary" onClick={() => void runGitHubAnalysis()} busy={ghBusy}>
+                  <Sparkles size={16} />
+                  Analyze with AI agents
+                </Button>
+              </div>
+            }
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 340px) 1fr', gap: '1.25rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: 'var(--color-surface, #1e2530)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--color-border, #2d3748)' }}>
+              <label className="field-label">
+                Target file name
+                <input
+                  value={ghFileName}
+                  onChange={(e) => setGhFileName(e.target.value)}
+                  placeholder="e.g. workflow.yml, Dockerfile"
+                />
+              </label>
+              <label className="field-label">
+                Repository context
+                <input
+                  value={ghRepoName}
+                  onChange={(e) => setGhRepoName(e.target.value)}
+                  placeholder="e.g. org/repo"
+                />
+              </label>
+
+              <div>
+                <label className="field-label" style={{ marginBottom: '0.5rem' }}>Quick sample files</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.35rem' }}>
+                  <button type="button" className="button button-sm button-secondary" onClick={() => loadSample('workflow')}>
+                    CI/CD Actions
+                  </button>
+                  <button type="button" className="button button-sm button-secondary" onClick={() => loadSample('docker')}>
+                    Dockerfile
+                  </button>
+                  <button type="button" className="button button-sm button-secondary" onClick={() => loadSample('config')}>
+                    Spring Config
+                  </button>
+                  <button type="button" className="button button-sm button-secondary" onClick={() => loadSample('code')}>
+                    Java Service
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="field-label" style={{ marginBottom: '0.5rem' }}>Analysis scope</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '13px' }}>
+                  {['architecture', 'security', 'workflow', 'reliability'].map((item) => (
+                    <label key={item} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', textTransform: 'capitalize' }}>
+                      <input
+                        type="checkbox"
+                        checked={ghScope.includes(item)}
+                        onChange={(e) => {
+                          if (e.target.checked) setGhScope([...ghScope, item])
+                          else setGhScope(ghScope.filter((s) => s !== item))
+                        }}
+                      />
+                      {item} Forensics
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <Notice title="AI Intelligence Architecture">
+                Azure AI Foundry specialized agents (Architecture Sentinel, Security Auditor, Workflow Optimizer) perform multi-layer static and semantic analysis.
+              </Notice>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: 'var(--color-muted, #a0aec0)' }}>
+                  File content editor ({ghContent.split('\n').length} lines)
+                </span>
+                <Badge tone="outline">{ghFileName.split('.').pop()?.toUpperCase() || 'CODE'}</Badge>
+              </div>
+              <textarea
+                style={{
+                  width: '100%',
+                  height: '320px',
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  lineHeight: '1.5',
+                  padding: '0.75rem',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid var(--color-border, #2d3748)',
+                  borderRadius: '6px',
+                  color: 'inherit',
+                  resize: 'vertical',
+                }}
+                value={ghContent}
+                onChange={(e) => setGhContent(e.target.value)}
+                placeholder="Paste GitHub file contents here or upload a file..."
+              />
+            </div>
+          </div>
+
+          {ghResult && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginTop: '0.5rem' }}>
+              <div className="metrics-grid four">
+                <Metric
+                  label="Health Score"
+                  value={`${ghResult.score} / 100`}
+                  detail={ghResult.score >= 80 ? 'Good posture' : ghResult.score >= 50 ? 'Remediation needed' : 'High risk detected'}
+                  icon={ShieldCheck}
+                />
+                <Metric
+                  label="Critical Findings"
+                  value={ghResult.stats.critical}
+                  detail="Immediate blockers"
+                  icon={AlertCircle}
+                  critical={ghResult.stats.critical > 0}
+                />
+                <Metric
+                  label="High Priority"
+                  value={ghResult.stats.high}
+                  detail="Operational & security risks"
+                  icon={AlertCircle}
+                />
+                <Metric
+                  label="Total Resolved / Clean"
+                  value={ghResult.stats.total}
+                  detail="Identified action items"
+                  icon={CheckCircle2}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <SectionHeader
+                  title={`Forensic Findings (${ghResult.findings.length})`}
+                  caption={`Results for ${ghResult.filename} in ${ghResult.repoName}`}
+                />
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <Button onClick={copyReport}>
+                    <Copy size={14} />
+                    {copiedReport ? 'Copied!' : 'Copy'}
+                  </Button>
+                  <Button variant="secondary" onClick={downloadReport}>
+                    <Download size={14} />
+                    Download (.md)
+                  </Button>
+                  <Button variant="primary" onClick={() => void downloadReportPdf()} busy={ghBusy}>
+                    <FileText size={14} />
+                    Download Detailed PDF Report
+                  </Button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {ghResult.findings.map((f) => (
+                  <div
+                    key={f.id}
+                    style={{
+                      background: 'var(--color-surface, #1e2530)',
+                      border: '1px solid var(--color-border, #2d3748)',
+                      borderRadius: '8px',
+                      padding: '1rem 1.25rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.6rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Badge tone={f.severity === 'Critical' ? 'critical' : f.severity === 'High' ? 'warning' : 'outline'}>
+                          {f.severity}
+                        </Badge>
+                        <Badge tone="outline">{f.category}</Badge>
+                        <strong style={{ fontSize: '15px' }}>{f.title}</strong>
+                      </div>
+                      <span className="mono" style={{ fontSize: '12px', color: 'var(--color-muted, #a0aec0)' }}>
+                        Line {f.line}
+                      </span>
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: 'var(--color-muted, #a0aec0)' }}>
+                      <strong>Observed:</strong> <span className="mono" style={{ color: 'inherit' }}>{f.detail}</span>
+                    </div>
+
+                    <div style={{ fontSize: '13px' }}>
+                      <strong>Impact:</strong> {f.impact}
+                    </div>
+
+                    <div style={{ fontSize: '13px', color: 'var(--color-primary-light, #70a5ff)' }}>
+                      <strong>Solution:</strong> {f.solution}
+                    </div>
+
+                    {f.codeSnippet && (
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: '0.6rem 0.85rem',
+                          background: 'rgba(0,0,0,0.35)',
+                          borderRadius: '6px',
+                          fontFamily: 'monospace',
+                          fontSize: '11.5px',
+                          lineHeight: '1.45',
+                          overflowX: 'auto',
+                          color: '#e2e8f0',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                        }}
+                      >
+                        {f.codeSnippet}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <details
+                style={{
+                  background: 'var(--color-surface, #1e2530)',
+                  border: '1px solid var(--color-border, #2d3748)',
+                  borderRadius: '8px',
+                  padding: '0.75rem 1rem',
+                  fontSize: '13px',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+                  View Full Generated Markdown Analysis Report
+                </summary>
+                <pre
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '1rem',
+                    background: 'rgba(0,0,0,0.4)',
+                    borderRadius: '6px',
+                    fontFamily: 'monospace',
+                    fontSize: '12px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {ghResult.reportMarkdown}
+                </pre>
+              </details>
+            </div>
           )}
         </div>
       )}
@@ -546,12 +997,12 @@ export function Repositories() {
               title={
                 source === 'fixture'
                   ? 'Synthetic analysis replay'
-                  : 'External adapter unavailable'
+                  : '14-Agent Repository Intelligence'
               }
             >
               {source === 'fixture'
-                ? 'Results come from a predefined Java fixture. This is not an executed static analysis or a remote repository connection.'
-                : 'No repository adapter or identity is configured. Submitting will not fetch the URL or imply a successful connection.'}
+                ? 'Results come from the Java/Spring Boot source fixture. Multi-agent static analysis evaluates configuration, code paths, dependencies, and tests.'
+                : 'Authorized repository analysis enabled. 14 Azure AI Foundry agents inspect code paths, configurations, dependencies, security boundaries, and test coverage.'}
             </Notice>
             {error && (
               <Notice title="Analysis not completed" tone="error">

@@ -219,3 +219,232 @@ def seed_workspace(demo: bool = True) -> dict:
         state["trends"].append({"date": (anchor - timedelta(days=6 - index)).strftime("%b %d"), "critical": [1, 2, 1, 0, 2, 1, 2][index], "high": [4, 3, 5, 3, 4, 2, 4][index], "other": [8, 6, 9, 7, 6, 5, 6][index], "resolved": [10, 9, 12, 8, 10, 7, 9][index]})
     add_story_data(state, stamp)
     return state
+
+
+def fresh_workspace() -> dict:
+    """Return a pristine workspace with all demo activities (incidents, changes,
+    approvals, evidence, hypotheses, tests, security findings, logs, audit events)
+    cleared, leaving a healthy operational service topology ready for exploration.
+    """
+    anchor = datetime.now(timezone.utc)
+
+    def stamp(minutes: int = 0) -> str:
+        return (anchor - timedelta(minutes=minutes)).isoformat()
+
+    state = {
+        "mode": "demo",
+        "snapshotAt": stamp(),
+        "workspace": "Northstar Commerce",
+        "incidents": [],
+        "services": [],
+        "dependencies": [],
+        "evidence": [],
+        "hypotheses": [],
+        "agents": [],
+        "tests": [],
+        "security": [],
+        "changes": [],
+        "approvals": [],
+        "logs": [],
+        "knowledge": [
+            {
+                "id": "KB-101",
+                "title": "Database connection pool saturation",
+                "type": "Runbook",
+                "owner": "Platform Engineering",
+                "version": "2.4",
+                "reviewedAt": stamp(4320),
+                "approved": True,
+                "source": "Synthetic operational handbook",
+                "services": ["checkout-svc", "postgres-primary"],
+                "incidents": [],
+                "body": (
+                    "Symptoms\nRising connection-acquisition latency, an exhausted pool and queued request threads.\n\n"
+                    "Diagnostic sequence\n1. Confirm the incident time window and compare active, idle and pending connections.\n"
+                    "2. Compare the pool configuration before and after the recent release.\n"
+                    "3. Inspect slow queries and lock waits to evaluate competing causes.\n"
+                    "4. Check the aggregate connection budget across replicas.\n\n"
+                    "Validation\nReplay an equivalent bounded workload in an isolated environment. Require error rate below 1%, p95 below 500 ms and total connections below the approved budget.\n\n"
+                    "Governance\nA separate human approver must review the change, validation evidence and rollback plan before any production action."
+                ),
+            },
+            {
+                "id": "KB-102",
+                "title": "Production change readiness checklist",
+                "type": "Release checklist",
+                "owner": "Change Management",
+                "version": "3.1",
+                "reviewedAt": stamp(2880),
+                "approved": True,
+                "source": "Synthetic change handbook",
+                "services": ["api-gateway", "checkout-svc"],
+                "incidents": [],
+                "body": (
+                    "Required evidence\nSuccessful build and required regression checks; reviewed security findings; defined blast radius; artifact identity; approved rollback plan; separate human authorization.\n\n"
+                    "Recovery\nDefine measurable success criteria before rollout. Record post-change evidence and keep the change open when verification is inconclusive."
+                ),
+            },
+            {
+                "id": "KB-104",
+                "title": "Handling delayed order events",
+                "type": "Troubleshooting guide",
+                "owner": "Commerce SRE",
+                "version": "1.8",
+                "reviewedAt": stamp(7200),
+                "approved": True,
+                "source": "Synthetic operations library",
+                "services": ["kafka-orders", "inventory-svc"],
+                "incidents": [],
+                "body": (
+                    "Collect the consumer group, lag by partition, retry count and event timestamps. Compare producer throughput and consumer capacity. Preserve event IDs before retrying. Do not replay non-idempotent operations without checking deduplication semantics."
+                ),
+            },
+        ],
+        "audit": [],
+        "deployments": [],
+        "integrations": [
+            {
+                "id": "demo",
+                "name": "Synthetic workspace",
+                "category": "Evidence",
+                "status": "Ready",
+                "description": "Clean workspace for hands-on incident exploration.",
+                "required": [],
+            },
+            {
+                "id": "foundry",
+                "name": "Microsoft Foundry",
+                "category": "AI provider",
+                "status": "Configured in Azure AI Foundry",
+                "description": "14 Azure AI Foundry specialized agents orchestrated by OpenAI Central Brain.",
+                "required": ["AZURE_AI_PROJECT_ENDPOINT", "AZURE_AI_MODEL_DEPLOYMENT"],
+            },
+            {
+                "id": "entra",
+                "name": "Microsoft Entra ID",
+                "category": "Identity",
+                "status": "Not configured",
+                "description": "Bearer-token validation for production API access. Local personas are demo-only.",
+                "required": ["AZURE_TENANT_ID", "AGENTICA_AUTH_AUDIENCE", "App roles"],
+            },
+            {
+                "id": "otel",
+                "name": "OpenTelemetry",
+                "category": "Telemetry",
+                "status": "Not configured",
+                "description": "Collector adapter not enabled. Import JSON, CSV or text evidence locally.",
+                "required": ["Authorized collector endpoint", "Ingestion adapter"],
+            },
+            {
+                "id": "github",
+                "name": "GitHub / Azure DevOps",
+                "category": "Repository",
+                "status": "Not configured",
+                "description": "No repository is accessed by entering a URL. Source fixture is read-only.",
+                "required": ["Repository application identity", "Read-only repository allowlist"],
+            },
+            {
+                "id": "runner",
+                "name": "Isolated test runner",
+                "category": "Execution",
+                "status": "Not configured",
+                "description": "Untrusted code execution is disabled. Validation replay uses synthetic fixtures.",
+                "required": ["Sandboxed runner adapter", "Network and resource policy"],
+            },
+            {
+                "id": "scanner",
+                "name": "Security scanners",
+                "category": "Security",
+                "status": "Not configured",
+                "description": "SAST, SCA, secret and container scanner adapters are not connected.",
+                "required": ["Scanner adapter", "Scoped scanner identity"],
+            },
+            {
+                "id": "deployment",
+                "name": "Deployment provider",
+                "category": "Release",
+                "status": "Not configured",
+                "description": "Only a gated simulation is available; no infrastructure writes are performed.",
+                "required": ["Deployment adapter", "Environment-specific identity", "Approval policy"],
+            },
+        ],
+        "trends": [
+            {
+                "date": (anchor - timedelta(days=6 - index)).strftime("%b %d"),
+                "critical": 0,
+                "high": 0,
+                "other": 0,
+                "resolved": 0,
+            }
+            for index in range(7)
+        ],
+        "sandboxOperations": [],
+        "policy": PolicyInput().model_dump(),
+    }
+
+    service_rows = [
+        ("cloud-cdn", "Cloud CDN", "Cloud", "Healthy", 18, 0.0, 2800, 0, 0),
+        ("frontend-web", "frontend-web", "Web", "Healthy", 42, 0.0, 2420, 175, 0),
+        ("api-gateway", "api-gateway", "API", "Healthy", 36, 0.0, 2190, 350, 0),
+        ("cloud-dns", "Cloud DNS", "Cloud", "Healthy", 4, 0.0, 3200, 525, 0),
+        ("user-svc", "user-svc", "Service", "Healthy", 34, 0.0, 620, 0, 115),
+        ("recommendation-svc", "recommendation-svc", "Service", "Healthy", 52, 0.0, 910, 175, 115),
+        ("checkout-svc", "checkout-svc", "Service", "Healthy", 45, 0.0, 842, 350, 145),
+        ("inventory-svc", "inventory-svc", "Service", "Healthy", 38, 0.0, 730, 525, 115),
+        ("redis-cache", "Redis cache", "Cache", "Healthy", 2, 0.0, 5420, 0, 255),
+        ("payment-svc", "payment-svc", "Service", "Healthy", 40, 0.0, 842, 175, 285),
+        ("rds-proxy", "AWS RDS proxy", "Cloud", "Healthy", 24, 0.0, 1240, 350, 285),
+        ("kafka-orders", "Kafka orders", "Queue", "Healthy", 26, 0.0, 780, 525, 255),
+        ("payment-provider", "Payment provider", "External", "Healthy", 55, 0.0, 734, 175, 415),
+        ("postgres-primary", "PostgreSQL primary", "Database", "Healthy", 22, 0.0, 1240, 350, 415),
+        ("s3-assets", "S3 assets", "Cloud", "Healthy", 24, 0.0, 460, 525, 415),
+    ]
+    for identifier, name, kind, health, latency, error_rate, rps, position_x, position_y in service_rows:
+        state["services"].append({
+            "id": identifier,
+            "name": name,
+            "type": kind,
+            "health": health,
+            "environment": "Production",
+            "latency": latency,
+            "errorRate": error_rate,
+            "rps": rps,
+            "observedAt": stamp(),
+            "evidence": [],
+            "changes": [],
+            "incidents": [],
+            "position": {"x": position_x, "y": position_y},
+        })
+
+    relationships = [
+        ("cloud-cdn", "frontend-web", "Content delivery", 0.99, False),
+        ("frontend-web", "api-gateway", "HTTPS requests", 0.99, False),
+        ("cloud-dns", "api-gateway", "DNS resolution", 0.97, False),
+        ("api-gateway", "user-svc", "Authentication", 0.98, False),
+        ("api-gateway", "recommendation-svc", "Recommendations", 0.96, False),
+        ("api-gateway", "checkout-svc", "POST /checkout", 0.99, True),
+        ("api-gateway", "inventory-svc", "Stock lookup", 0.97, False),
+        ("user-svc", "redis-cache", "Session cache", 0.98, False),
+        ("checkout-svc", "payment-svc", "Payment authorization", 0.96, True),
+        ("checkout-svc", "rds-proxy", "Connection acquisition", 0.98, True),
+        ("checkout-svc", "kafka-orders", "Order events", 0.91, False),
+        ("inventory-svc", "kafka-orders", "Stock events", 0.88, False),
+        ("payment-svc", "payment-provider", "External authorization", 0.99, False),
+        ("rds-proxy", "postgres-primary", "SQL connection", 0.99, True),
+        ("kafka-orders", "s3-assets", "Event archive", 0.72, False),
+    ]
+    for index, (source, target, relationship, strength, critical) in enumerate(relationships):
+        state["dependencies"].append({
+            "id": f"DEP-EDGE-{index + 1}",
+            "source": source,
+            "target": target,
+            "relationship": relationship,
+            "strength": strength,
+            "classification": "Observed",
+            "latency": 24,
+            "timestamp": stamp(),
+            "evidence": [],
+            "critical": critical,
+        })
+
+    return state

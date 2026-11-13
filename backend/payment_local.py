@@ -65,7 +65,8 @@ class LocalPaymentSandbox:
 
     def _get(self, path: str, timeout: float = 2.0) -> dict[str, Any] | None:
         try:
-            with urllib.request.urlopen(self.url + path, timeout=timeout) as response:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(self.url + path, timeout=timeout) as response:
                 return json.loads(response.read().decode())
         except Exception:
             return None

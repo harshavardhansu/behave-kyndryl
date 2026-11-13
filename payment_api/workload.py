@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import Any
 
 
+_NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def get_json(url: str, timeout: float = 5.0) -> dict[str, Any]:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
+    with _NO_PROXY_OPENER.open(url, timeout=timeout) as response:
         return json.loads(response.read())
 
 
@@ -21,7 +24,7 @@ def request_summary(url: str, barrier: threading.Barrier, timeout: float) -> dic
     barrier.wait(timeout=timeout)
     started = time.perf_counter()
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with _NO_PROXY_OPENER.open(url, timeout=timeout) as response:
             response.read()
             return {"status": response.status, "latency_ms": (time.perf_counter() - started) * 1000}
     except urllib.error.HTTPError as error:
