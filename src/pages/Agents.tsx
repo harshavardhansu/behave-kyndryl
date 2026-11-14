@@ -35,7 +35,7 @@ import {
   IncidentSelector,
   NextActionButton,
 } from '../components/incident'
-import { latestMission, missionTeam } from '../lib/missions'
+import { latestMission, missionTeam, specialistCount } from '../lib/missions'
 
 function CollaborationGraph({
   tasks,
@@ -124,7 +124,7 @@ export function Agents() {
   )
   if (!incident) return <EmptyState title="No incident selected" />
   const mission = latestMission(data.missions, incident.id)
-  const team = missionTeam(incident, mission)
+  const team = missionTeam(incident, mission, data.missionSteps)
   // The Orchestrator's team for this incident (mission-driven, not a fixed roster).
   const tasks = mission ? team.agents : []
   const selected = tasks.find((task) => task.id === selectedId)
@@ -255,7 +255,7 @@ export function Agents() {
             .filter((task) => task.status === 'Completed')
             .length.toString()
             .padStart(2, '0')}
-          detail={`${Math.max(tasks.length - 1, 0)} of 13 specialists on this team`}
+          detail={`${Math.max(tasks.length - 1, 0)} of ${specialistCount(data.missionSteps)} specialists on this team`}
           icon={CheckCheck}
         />
       </div>

@@ -166,3 +166,10 @@ def test_cancel_and_stale_gate(client):
     response = client.post(f"/api/v1/missions/{mission_id}/decision", json={"gateId": gate_id, "decision": "approve"})
     assert response.status_code == 409
     assert mission(client, mission_id)["status"] == "Cancelled"
+
+
+def test_workspace_publishes_the_mission_squads_in_order(client):
+    login(client)
+    steps = client.get("/api/v1/workspace").json()["missionSteps"]
+    assert [step["id"] for step in steps] == ["investigate", "diagnose", "remediate", "govern"]
+    assert sorted(role for step in steps for role in step["roles"]) == sorted(SPECIALISTS)  # every specialist belongs to one squad

@@ -412,6 +412,26 @@
     font-weight: 500;
 }
 
+.cmd-squad-pill i {
+    display: inline-grid;
+    width: 16px;
+    height: 16px;
+    margin-left: -5px;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--squad-color);
+    color: #ffffff;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    font-style: normal;
+    font-weight: 600;
+}
+
+.cmd-squad.is-upcoming .cmd-squad-pill i,
+.cmd-squad.is-skipped .cmd-squad-pill i {
+    background: #a8a8a8;
+}
+
 .cmd-squad.is-active .cmd-squad-pill {
     background: color-mix(in srgb, var(--squad-color) 10%, #ffffff);
 }
@@ -554,6 +574,25 @@
 
 .cmd-member.is-dim {
     opacity: 0.3;
+}
+
+/* A big squad keeps the same card height: extra agents scroll inside the card instead of pushing into the next one. */
+.cmd-members.is-expanded {
+    max-height: 120px; /* four whole rows, then it scrolls */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+}
+
+.cmd-member.cmd-more {
+    grid-template-columns: minmax(0, 1fr) auto;
+    color: color-mix(in srgb, var(--squad-color) 75%, #000000);
+    font-weight: 500;
+}
+
+.cmd-member.cmd-more .cmd-member-status {
+    color: inherit;
+    opacity: 0.8;
 }
 
 .cmd-member-dot {

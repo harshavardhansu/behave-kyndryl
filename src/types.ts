@@ -352,6 +352,8 @@ export interface Snapshot {
   approvals: Approval[]
   missions: Mission[]
   aiMode?: string
+  /** The squads the mission engine runs, in order (from backend/mission.py STEPS). */
+  missionSteps?: MissionStep[]
   paymentSandbox?: PaymentSandboxStatus
   sandboxMeasurements?: SandboxMeasurement[]
   aiUsage?: AIUsage
@@ -537,4 +539,10 @@ export interface IncidentInput {
   actual: string
   correlationId: string
   detectedAt: string
+}
+
+export interface MissionStep {
+  id: string
+  name: string
+  roles: string[]
 }

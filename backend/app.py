@@ -31,7 +31,7 @@ from .ai_client import AIBudget, AIUnavailable, ai_configured, key_mode
 from .foundry_agents import get_all_agents
 from .foundry_runtime import FoundryAgentService, foundry_agent_status
 from .foundry_brain import FoundryBrain
-from .mission import DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
+from .mission import STEPS, DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
@@ -297,6 +297,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         for mission in state.get("missions", []):
             mission.pop("brainCache", None)
         state["aiMode"] = application.state.mission_brain.mode
+        # The squads the mission engine runs, in order: the War Room draws exactly these (any number).
+        state["missionSteps"] = [{"id": step, "name": name, "roles": list(roles)} for step, name, roles in STEPS]
         control = application.state.sandbox_control
         state["paymentSandbox"] = control.status() if hasattr(control, "status") else {"mode": "container", "running": False}
         AIBudget(database, config)._usage(state)

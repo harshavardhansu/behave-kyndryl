@@ -1,4 +1,4 @@
-import type { Agent, AgentStatus, Incident, Mission } from '../types'
+import type { Agent, AgentStatus, Incident, Mission, MissionStep } from '../types'
 
 /** Display names for specialist roles (mirrors backend/seed.py). */
 export const ROLE_NAMES: Record<string, string> = {
@@ -26,11 +26,17 @@ export function latestMission(missions: Mission[] | undefined, incidentId: strin
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]
 }
 
+/** How many specialist roles the mission engine has (13 today), from its published squads. */
+export function specialistCount(steps: MissionStep[] | undefined) {
+    return steps?.length ? steps.reduce((total, step) => total + step.roles.length, 0) : 13
+}
+
 export function isOpenMission(mission: Mission | undefined) {
     return Boolean(mission && OPEN.has(mission.status))
 }
 
 
+/** Fallback when the backend does not publish its squads (workspace `missionSteps`). */
 const STEP_ORDER = ['investigate', 'diagnose', 'remediate', 'govern']
 
 export function missionCaption(mission: Mission | undefined) {
@@ -55,7 +61,8 @@ export function missionCaption(mission: Mission | undefined) {
  * for approval). Hand-offs follow the mission steps, so each agent depends on
  * the agents of the previous step that has team members.
  */
-export function missionTeam(incident: Incident, mission: Mission | undefined) {
+export function missionTeam(incident: Incident, mission: Mission | undefined, steps?: MissionStep[]) {
+    const stepOrder = steps?.length ? steps.map((step) => step.id) : STEP_ORDER
     const iteration = mission?.iterations[mission.iterations.length - 1]
     const caption = missionCaption(mission)
     const orchestratorStatus: AgentStatus = !mission
@@ -72,14 +79,14 @@ export function missionTeam(incident: Incident, mission: Mission | undefined) {
                             ? 'Cancelled'
                             : 'Paused'
     const limitations = mission
-        ? `${mission.mode}. Agents read the ticket and its evidence only; humans approve every important step.`
+        ? `${mission.mode}. Agents investigate with read-only tools and cannot change anything; humans approve every important step.`
         : 'No mission yet. Start an agent mission to have the Orchestrator form a team.'
     const proposed = iteration && !iteration.team.length && iteration.plan ? iteration.plan.selected : []
     const orchestratorId = `${mission?.id ?? incident.id}-orchestrator`
     const members = (iteration?.team ?? []).map((member) => ({
         id: member.id, role: member.role, step: member.step, member,
     }))
-    const stepsWithMembers = STEP_ORDER.filter((step) => members.some((item) => item.step === step))
+    const stepsWithMembers = stepOrder.filter((step) => members.some((item) => item.step === step))
     const dependenciesOf = (step: string) => {
         const index = stepsWithMembers.indexOf(step)
         if (index <= 0) return [orchestratorId]
@@ -98,7 +105,7 @@ export function missionTeam(incident: Incident, mission: Mission | undefined) {
             status: member.status === 'Not reached' ? 'Cancelled' : member.status, task: member.findings?.summary ?? member.task,
             incidentId: incident.id, startedAt: member.startedAt, lastActivity: member.completedAt ?? member.startedAt,
             dependencies: dependenciesOf(member.step), inputs: member.findings?.evidenceIds ?? [], outputs: [], retries: 0, usage: null,
-            approvalRequired: member.role === 'remediation' || member.role === 'root-cause', phase: STEP_ORDER.indexOf(member.step),
+            approvalRequired: member.role === 'remediation' || member.role === 'root-cause', phase: stepOrder.indexOf(member.step),
             limitations: member.findings?.source ? `${member.findings.source}. Humans approve every important step.` : limitations,
         })),
         ...proposed.map((item): Agent => ({

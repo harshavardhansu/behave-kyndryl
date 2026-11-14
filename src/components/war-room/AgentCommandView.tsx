@@ -29,7 +29,7 @@ import {
     Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import type { Agent, AgentStatus, Approval, Change, Evidence, Hypothesis, Incident } from '../../types'
+import type { Agent, AgentStatus, Approval, Change, Evidence, Hypothesis, Incident, MissionStep } from '../../types'
 import { stageIndex, workflowStages } from '../../lib/format'
 import { EmptyState } from '../ui'
 import './agent-command.css'
@@ -38,28 +38,57 @@ import './agent-command.css'
 /* Model                                                               */
 /* ------------------------------------------------------------------ */
 
-type SquadId = 'investigate' | 'diagnose' | 'remediate' | 'govern'
-type Corner = 'tl' | 'tr' | 'br' | 'bl'
 type SquadState = 'upcoming' | 'active' | 'done' | 'skipped'
 
 interface SquadDefinition {
-    id: SquadId
+    id: string
     name: string
     caption: string
     roles: string[]
     stages: number[]
     color: string
     icon: LucideIcon
-    corner: Corner
 }
 
-/** Specialists grouped by the incident lifecycle, read clockwise from the top left. */
-const SQUADS: SquadDefinition[] = [
-    { id: 'investigate', name: 'Investigate', caption: 'Detection & evidence', roles: ['intake', 'logs', 'observability', 'repository'], stages: [0, 1], color: '#1192E8', icon: Radar, corner: 'tl' },
-    { id: 'diagnose', name: 'Diagnose', caption: 'Knowledge & root cause', roles: ['knowledge', 'root-cause'], stages: [2], color: '#8A3FFC', icon: Microscope, corner: 'tr' },
-    { id: 'remediate', name: 'Remediate & Validate', caption: 'Fix, tests & quality gates', roles: ['remediation', 'testing', 'security', 'validation'], stages: [3, 4], color: '#D2A106', icon: Wrench, corner: 'br' },
-    { id: 'govern', name: 'Govern & Release', caption: 'Risk, approval & recovery', roles: ['risk', 'release', 'summary'], stages: [5, 6, 7, 8], color: '#24A148', icon: Rocket, corner: 'bl' },
+/** Look of the squads the mission engine has today; any other squad gets a palette colour and a generic icon. */
+const SQUAD_STYLE: Record<string, Pick<SquadDefinition, 'caption' | 'stages' | 'color' | 'icon'>> = {
+    investigate: { caption: 'Detection & evidence', stages: [0, 1], color: '#1192E8', icon: Radar },
+    diagnose: { caption: 'Knowledge & root cause', stages: [2], color: '#8A3FFC', icon: Microscope },
+    remediate: { caption: 'Fix, tests & quality gates', stages: [3, 4], color: '#D2A106', icon: Wrench },
+    govern: { caption: 'Risk, approval & recovery', stages: [5, 6, 7, 8], color: '#24A148', icon: Rocket },
+}
+const EXTRA_COLORS = ['#009D9A', '#EE538B', '#6929C4', '#B28600', '#005D5D', '#9F1853', '#0072C3']
+
+/** Used only if the backend does not publish its squads (older API). */
+const DEFAULT_STEPS: MissionStep[] = [
+    { id: 'investigate', name: 'Investigate', roles: ['intake', 'logs', 'observability', 'repository'] },
+    { id: 'diagnose', name: 'Diagnose', roles: ['knowledge', 'root-cause'] },
+    { id: 'remediate', name: 'Remediate & Validate', roles: ['remediation', 'testing', 'security', 'validation'] },
+    { id: 'govern', name: 'Govern & Release', roles: ['risk', 'release', 'summary'] },
 ]
+
+/** The squads to draw, in mission order. A role that belongs to no squad gets an "Other specialists" squad instead of vanishing. */
+function buildSquads(steps: MissionStep[] | undefined, roles: string[]): SquadDefinition[] {
+    let extra = 0
+    const squads: SquadDefinition[] = (steps?.length ? steps : DEFAULT_STEPS).map((step) => {
+        const style = SQUAD_STYLE[step.id]
+        return {
+            id: step.id,
+            name: step.name,
+            roles: step.roles,
+            caption: style?.caption ?? `${step.roles.length} specialist role${step.roles.length === 1 ? '' : 's'}`,
+            stages: style?.stages ?? [],
+            color: style?.color ?? EXTRA_COLORS[extra++ % EXTRA_COLORS.length],
+            icon: style?.icon ?? Users,
+        }
+    })
+    const covered = new Set(squads.flatMap((squad) => squad.roles))
+    const orphans = [...new Set(roles)].filter((role) => role !== 'orchestrator' && !covered.has(role))
+    if (orphans.length) {
+        squads.push({ id: 'other', name: 'Other specialists', caption: 'Roles outside the known squads', roles: orphans, stages: [], color: '#8D8D8D', icon: Users })
+    }
+    return squads
+}
 
 const HUB_COLOR = '#FF462D'
 
@@ -143,9 +172,9 @@ function buildFans({
     hypotheses: Hypothesis[]
     change?: Change
     approval?: Approval
-}): Record<SquadId, FanItem[]> {
+}): Record<string, FanItem[]> {
     const stage = stageIndex(incident.status)
-    const investigateRoles = new Set(SQUADS[0].roles)
+    const investigateRoles = new Set(DEFAULT_STEPS[0].roles)
     const linkedIds = new Set(agents.filter((agent) => investigateRoles.has(agent.role)).flatMap((agent) => [...agent.inputs, ...agent.outputs]))
     const linked = evidence.filter((record) => linkedIds.has(record.id))
     const investigate = (linked.length ? linked : evidence).slice(0, 5).map((record) => ({
@@ -236,6 +265,9 @@ interface SquadLayout {
 }
 
 const COMPACT_BREAKPOINT = 900
+const BASE_HEIGHT = 590
+const ROW_PITCH = 232 // a squad card at its tallest (4 rows) plus breathing room
+const STAGE_PAD = 20 // keeps the top and bottom cards off the stage edge
 
 function bezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
     const u = 1 - t
@@ -245,21 +277,37 @@ function bezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Poi
     }
 }
 
-function computeLayout(width: number, height: number, fanCounts: Record<SquadId, number>) {
+/**
+ * Seat of squad `index` of `count`: clockwise around the Orchestrator, starting top left, down the
+ * right column, then back up the left column. Four squads give the classic four corners.
+ */
+function seat(index: number, count: number): { side: -1 | 1; row: number; rows: number } {
+    const right = Math.floor(count / 2)
+    const left = count - right
+    if (index === 0) return { side: -1, row: 0, rows: left }
+    if (index <= right) return { side: 1, row: index - 1, rows: right }
+    return { side: -1, row: count - index, rows: left }
+}
+
+/** The stage grows a row at a time instead of letting squad cards overlap. */
+function stageHeight(count: number) {
+    return Math.max(BASE_HEIGHT, Math.ceil(count / 2) * ROW_PITCH + 2 * STAGE_PAD)
+}
+
+function computeLayout(width: number, height: number, squads: SquadDefinition[], fanCounts: Record<string, number>, gateSquadId?: string) {
     const hub: Point = { x: width / 2, y: height * 0.48 }
     const cardWidth = Math.max(196, Math.min(250, width * 0.19))
-    const layouts = {} as Record<SquadId, SquadLayout>
-    SQUADS.forEach((squad) => {
-        const side: -1 | 1 = squad.corner === 'tl' || squad.corner === 'bl' ? -1 : 1
-        const top = squad.corner === 'tl' || squad.corner === 'tr'
-        const hex: Point = { x: width / 2 + side * width * 0.165, y: height * (top ? 0.25 : 0.74) }
+    const layouts: Record<string, SquadLayout> = {}
+    squads.forEach((squad, index) => {
+        const { side, row, rows } = seat(index, squads.length)
+        const hex: Point = { x: width / 2 + side * width * 0.165, y: rows === 1 ? height * 0.5 : STAGE_PAD + ((height - 2 * STAGE_PAD) * (row + 0.5)) / rows }
         const cardInner = hex.x + side * 64
         const cardLeft = side === -1 ? cardInner - cardWidth : cardInner
         const cardOuter = side === -1 ? cardLeft : cardLeft + cardWidth
         const fanX = cardOuter + side * 44
-        const count = fanCounts[squad.id]
         const spacing = 34
-        const fanYs = Array.from({ length: count }, (_, index) => hex.y + (index - (count - 1) / 2) * spacing)
+        const count = Math.min(fanCounts[squad.id] ?? 0, Math.max(1, Math.floor((height / rows - 24) / spacing)))
+        const fanYs = Array.from({ length: count }, (_, fanIndex) => hex.y + (fanIndex - (count - 1) / 2) * spacing)
         const port: Point = { x: hex.x - side * 42, y: hex.y }
         const c1: Point = { x: hub.x, y: (hub.y + port.y) / 2 }
         const c2: Point = { x: (hub.x + port.x) / 2, y: port.y }
@@ -279,7 +327,7 @@ function computeLayout(width: number, height: number, fanCounts: Record<SquadId,
             hubPath,
             cardPath,
             fanPaths,
-            gate: squad.id === 'govern' ? bezierPoint(hub, c1, c2, port, 0.55) : undefined,
+            gate: squad.id === gateSquadId ? bezierPoint(hub, c1, c2, port, 0.62) : undefined,
         }
     })
     return { hub, layouts }
@@ -338,6 +386,8 @@ function FanNode({ item, color, style, onSelectEvidence, matched }: { item: FanI
     )
 }
 
+const MAX_ROWS = 4 // rows a squad card shows before it summarises; keeps every card the same height budget
+
 function SquadCard({
     squad,
     members,
@@ -359,8 +409,18 @@ function SquadCard({
     footer?: ReactNode
     emptyText?: string
 }) {
+    const [expanded, setExpanded] = useState(false)
     const completed = members.filter((agent) => agent.status === 'Completed').length
     const progress = members.length ? Math.round((completed / members.length) * 100) : 0
+    // Skipped agents get their own rows only while everything fits; otherwise one summary row.
+    const skippedInline = members.length + skipped.length <= MAX_ROWS
+    const memberBudget = MAX_ROWS - (skipped.length === 0 ? 0 : skippedInline ? skipped.length : 1)
+    const overflow = !expanded && members.length > memberBudget
+    let shown = overflow ? members.slice(0, memberBudget - 1) : members
+    const selectedHidden = overflow ? members.find((agent) => agent.id === selectedId && !shown.includes(agent)) : undefined
+    if (selectedHidden) shown = [...shown.slice(0, -1), selectedHidden]
+    const hiddenCount = members.length - shown.length
+    const skippedLabel = (reason: string) => (reason.startsWith('Held back') ? 'Held back' : reason.startsWith('Removed') ? 'Removed' : 'Not needed')
     return (
         <div className={`cmd-card is-${state}`} style={{ '--squad-color': squad.color } as CSSProperties}>
             <div className="cmd-card-head">
@@ -368,8 +428,8 @@ function SquadCard({
                 <span className={`cmd-state is-${state}`}>{state === 'done' ? 'Done' : state === 'active' ? 'Active' : state === 'skipped' ? 'Not needed' : 'Upcoming'}</span>
             </div>
             <small className="cmd-card-caption">{squad.caption}</small>
-            <ul className="cmd-members">
-                {members.map((agent) => (
+            <ul className={`cmd-members ${expanded ? 'is-expanded' : ''}`}>
+                {shown.map((agent) => (
                     <li key={agent.id}>
                         <button
                             type="button"
@@ -384,15 +444,45 @@ function SquadCard({
                         </button>
                     </li>
                 ))}
-                {skipped.map((item) => (
-                    <li key={item.role}>
-                        <span className="cmd-member is-skipped" title={item.reason}>
-                            <span className="cmd-member-dot" />
-                            <span className="cmd-member-name">{item.name}</span>
-                            <span className="cmd-member-status">{item.reason.startsWith('Held back') ? 'Held back' : item.reason.startsWith('Removed') ? 'Removed' : 'Not needed'}</span>
-                        </span>
+                {overflow && hiddenCount > 0 && (
+                    <li>
+                        <button type="button" className="cmd-member cmd-more" onClick={() => setExpanded(true)} aria-label={`Show ${hiddenCount} more agents in ${squad.name}`}>
+                            <span className="cmd-member-name">+{hiddenCount} more</span>
+                            <span className="cmd-member-status">Show all</span>
+                        </button>
                     </li>
-                ))}
+                )}
+                {expanded && members.length > memberBudget && (
+                    <li>
+                        <button type="button" className="cmd-member cmd-more" onClick={() => setExpanded(false)}>
+                            <span className="cmd-member-name">Show fewer</span>
+                        </button>
+                    </li>
+                )}
+                {skippedInline
+                    ? skipped.map((item) => (
+                          <li key={item.role}>
+                              <span className="cmd-member is-skipped" title={item.reason}>
+                                  <span className="cmd-member-dot" />
+                                  <span className="cmd-member-name">{item.name}</span>
+                                  <span className="cmd-member-status">{skippedLabel(item.reason)}</span>
+                              </span>
+                          </li>
+                      ))
+                    : skipped.length > 0 && (
+                          <li>
+                              <span
+                                  className="cmd-member is-skipped"
+                                  tabIndex={0}
+                                  title={skipped.map((item) => `${item.name}: ${item.reason}`).join('\n')}
+                                  aria-label={`${skipped.length} left out: ${skipped.map((item) => `${item.name} (${item.reason})`).join('; ')}`}
+                              >
+                                  <span className="cmd-member-dot" />
+                                  <span className="cmd-member-name">{skipped.length} left out</span>
+                                  <span className="cmd-member-status">Hover for why</span>
+                              </span>
+                          </li>
+                      )}
                 {!members.length && !skipped.length && emptyText && <li className="cmd-member-empty">{emptyText}</li>}
             </ul>
             <div className="cmd-progress" aria-label={`${completed} of ${members.length} tasks completed`}>
@@ -447,8 +537,11 @@ export function AgentCommandView({
     onSelectEvidence,
     onShowDetails,
     mission,
+    steps,
 }: {
     mission?: MissionView
+    /** The squads the mission engine runs, in order (any number); defaults to the built-in four. */
+    steps?: MissionStep[]
     incident: Incident
     agents: Agent[]
     evidence: Evidence[]
@@ -496,17 +589,26 @@ export function AgentCommandView({
     const orchestrator = agents.find((agent) => agent.role === 'orchestrator')
     const selected = agents.find((agent) => agent.id === selectedId)
     const currentStage = stageIndex(incident.status)
+    const squads = useMemo(
+        () => buildSquads(steps, [...agents.map((agent) => agent.role), ...(mission?.skipped ?? []).map((item) => item.role)]),
+        [steps, agents, mission?.skipped],
+    )
     const membersBySquad = useMemo(() => {
-        const result = {} as Record<SquadId, Agent[]>
-        SQUADS.forEach((squad) => {
+        const result: Record<string, Agent[]> = {}
+        squads.forEach((squad) => {
             result[squad.id] = squad.roles.flatMap((role) => agents.filter((agent) => agent.role === role))
         })
         return result
-    }, [agents])
+    }, [agents, squads])
     const fans = useMemo(() => buildFans({ incident, agents, evidence, hypotheses, change, approval }), [incident, agents, evidence, hypotheses, change, approval])
-    const fanCounts = { investigate: fans.investigate.length, diagnose: fans.diagnose.length, remediate: fans.remediate.length, govern: fans.govern.length }
+    const fansOf = (squad: SquadDefinition) => fans[squad.id] ?? []
+    const fanCounts = Object.fromEntries(squads.map((squad) => [squad.id, fansOf(squad).length]))
+    // The human-approval gate sits on the link to the squad that releases (or the last squad).
+    const gateSquadId = (squads.find((squad) => squad.roles.includes('release')) ?? squads[squads.length - 1])?.id
     const compact = size.width > 0 && size.width < COMPACT_BREAKPOINT
-    const geometry = size.width && !compact ? computeLayout(size.width, size.height, fanCounts) : null
+    const minStageHeight = stageHeight(squads.length)
+    const geometry = size.width && !compact ? computeLayout(size.width, size.height, squads, fanCounts, gateSquadId) : null
+    const hexSize = squads.length > 6 ? 58 : 68
 
     const normalizedQuery = query.trim().toLowerCase()
     const isMatch = (agent: Agent) =>
@@ -518,7 +620,7 @@ export function AgentCommandView({
     const caption = mission ? mission.caption : hubCaption(incident)
     const hubRunning = mission ? mission.running : incident.workflowStatus === 'Running'
     const skippedBySquad = (squad: SquadDefinition) => (mission?.skipped ?? []).filter((item) => squad.roles.includes(item.role))
-    const stateOf = (squad: SquadDefinition) => squadState(squad, currentStage, membersBySquad[squad.id], mission)
+    const stateOf = (squad: SquadDefinition) => squadState(squad, currentStage, membersBySquad[squad.id] ?? [], mission)
     const emptyText = mission && !mission.hasMission ? 'No team yet. Start an agent mission.' : undefined
     const runningCount = agents.filter((agent) => agent.status === 'Running').length
     const completedCount = agents.filter((agent) => agent.status === 'Completed').length
@@ -567,17 +669,21 @@ export function AgentCommandView({
         </button>
     )
 
-    const squadNode = (squad: SquadDefinition, state: SquadState, sizePx: number) => {
-        const members = membersBySquad[squad.id]
+    const squadNode = (squad: SquadDefinition, index: number, state: SquadState, sizePx: number) => {
+        const members = membersBySquad[squad.id] ?? []
         const done = members.filter((agent) => agent.status === 'Completed').length
         const anyMatch = members.some(isMatch)
         const holdsSelection = members.some((agent) => agent.id === selectedId)
         return (
-            <div className={`cmd-squad is-${state} ${holdsSelection ? 'is-selected' : ''}`} style={{ '--squad-color': squad.color, '--hex': `${sizePx}px`, '--float-delay': `${SQUADS.indexOf(squad) * -0.8}s` } as CSSProperties}>
+            <div className={`cmd-squad is-${state} ${holdsSelection ? 'is-selected' : ''}`} style={{ '--squad-color': squad.color, '--hex': `${sizePx}px`, '--float-delay': `${index * -0.8}s` } as CSSProperties}>
                 <span className="cmd-port left" />
                 <HexBadge color={squad.color} icon={squad.icon} size={sizePx} dim={!anyMatch} />
                 <span className="cmd-port right" />
-                <span className="cmd-squad-pill">{squad.name}<b>{state === 'skipped' ? '—' : `${done}/${members.length}`}</b></span>
+                <span className="cmd-squad-pill" title={`Step ${index + 1} of ${squads.length}: ${squad.name}`}>
+                    <i aria-hidden="true">{index + 1}</i>
+                    {squad.name}
+                    <b>{state === 'skipped' ? '—' : `${done}/${members.length}`}</b>
+                </span>
             </div>
         )
     }
@@ -605,16 +711,21 @@ export function AgentCommandView({
                     <WorkforceList agents={agents.filter(isMatch).length ? agents.filter(isMatch) : agents} selectedId={selectedId} onSelect={onSelect} />
                 </div>
             ) : (
-                <div className={`cmd-stage ${compact ? 'is-compact' : ''}`} ref={stage} key={introKey}>
+                <div
+                    className={`cmd-stage ${compact ? 'is-compact' : ''}`}
+                    ref={stage}
+                    key={introKey}
+                    data-squads={squads.length}
+                    style={compact ? undefined : { minHeight: minStageHeight }}
+                >
                     {geometry && (
                         <>
                             <svg className="cmd-links" width={size.width} height={size.height} aria-hidden="true">
-                                {SQUADS.map((squad) => {
+                                {squads.map((squad, order) => {
                                     const layout = geometry.layouts[squad.id]
                                     const state = stateOf(squad)
-                                    const flowing = state === 'active' || (!mission && squad.id !== 'govern' && incident.workflowStatus === 'Running' && state !== 'done')
-                                    const selectedHere = membersBySquad[squad.id].some((agent) => agent.id === selectedId)
-                                    const order = SQUADS.indexOf(squad)
+                                    const flowing = state === 'active' || (!mission && squad.id !== gateSquadId && incident.workflowStatus === 'Running' && state !== 'done')
+                                    const selectedHere = (membersBySquad[squad.id] ?? []).some((agent) => agent.id === selectedId)
                                     const packetDuration = flowing ? 1.8 : state === 'done' ? 3.6 : 5.2
                                     const showPackets = !reducedMotion && state !== 'skipped'
                                     return (
@@ -642,7 +753,7 @@ export function AgentCommandView({
                                 })}
                             </svg>
 
-                            {SQUADS.map((squad, index) => {
+                            {squads.map((squad, index) => {
                                 const layout = geometry.layouts[squad.id]
                                 const state = stateOf(squad)
                                 const fromX = layout.side * 160
@@ -650,12 +761,12 @@ export function AgentCommandView({
                                 return (
                                     <div key={squad.id}>
                                         <div className="cmd-node" style={{ left: layout.hex.x, top: layout.hex.y, '--fx': `${fromX}px`, '--fy': `${fromY}px`, '--delay': `${0.35 + index * 0.12}s` } as CSSProperties}>
-                                            {squadNode(squad, state, 68)}
+                                            {squadNode(squad, index, state, hexSize)}
                                         </div>
                                         <div className="cmd-card-slot" style={{ left: layout.card.left, top: layout.card.top, width: layout.card.width, '--delay': `${1.15 + index * 0.1}s` } as CSSProperties}>
-                                            <SquadCard squad={squad} members={membersBySquad[squad.id]} skipped={skippedBySquad(squad)} emptyText={emptyText} state={state} selectedId={selectedId} isMatch={isMatch} onSelect={onSelect} />
+                                            <SquadCard squad={squad} members={membersBySquad[squad.id] ?? []} skipped={skippedBySquad(squad)} emptyText={emptyText} state={state} selectedId={selectedId} isMatch={isMatch} onSelect={onSelect} />
                                         </div>
-                                        {fans[squad.id].map((item, fanIndex) => (
+                                        {fansOf(squad).slice(0, layout.fanYs.length).map((item, fanIndex) => (
                                             <FanNode
                                                 key={item.key}
                                                 item={item}
@@ -690,14 +801,14 @@ export function AgentCommandView({
                     {compact && (
                         <div className="cmd-compact">
                             {hubNode && <div className="cmd-compact-hub">{hubNode}</div>}
-                            {SQUADS.map((squad, index) => {
+                            {squads.map((squad, index) => {
                                 const state = stateOf(squad)
                                 return (
                                     <div key={squad.id} className={`cmd-compact-row is-${state}`} style={{ '--squad-color': squad.color, '--delay': `${0.2 + index * 0.1}s` } as CSSProperties}>
-                                        {squadNode(squad, state, 52)}
+                                        {squadNode(squad, index, state, 52)}
                                         <SquadCard
                                             squad={squad}
-                                            members={membersBySquad[squad.id]}
+                                            members={membersBySquad[squad.id] ?? []}
                                             skipped={skippedBySquad(squad)}
                                             emptyText={emptyText}
                                             state={state}
@@ -706,12 +817,12 @@ export function AgentCommandView({
                                             onSelect={onSelect}
                                             footer={
                                                 <span className="cmd-compact-fans">
-                                                    {squad.id === 'govern' && (
+                                                    {squad.id === gateSquadId && (
                                                         <span className={`cmd-gate inline ${approvalLocked ? 'is-locked' : 'is-open'}`}>
                                                             {approvalLocked ? <Lock size={11} /> : <LockOpen size={11} />}
                                                         </span>
                                                     )}
-                                                    {fans[squad.id].map((item) => (
+                                                    {fansOf(squad).map((item) => (
                                                         <FanNode key={item.key} item={item} color={squad.color} matched={fanMatches(item)} onSelectEvidence={onSelectEvidence} style={{}} />
                                                     ))}
                                                 </span>
@@ -750,7 +861,7 @@ export function AgentCommandView({
                     <span><CircleDashed size={12} /> {runningCount} running</span>
                     <span>{completedCount} completed</span>
                     <span>{failedCount} failed</span>
-                    <span className="cmd-summary-note">Recorded task states only · no live agent execution</span>
+                    <span className="cmd-summary-note">{mission?.hasMission ? `${squads.length} squads · live mission state from the backend` : 'Recorded task states only'}</span>
                 </div>
             </div>
         </div>
