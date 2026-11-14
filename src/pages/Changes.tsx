@@ -1,3 +1,4 @@
+import { IncidentReportButton } from '../components/ReportPreview'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -5,7 +6,6 @@ import {
   ArrowRight,
   Check,
   ClipboardCheck,
-  Download,
   FileCheck2,
   GitPullRequest,
   LockKeyhole,
@@ -48,7 +48,6 @@ export function Changes() {
     selectIncident,
     can,
     setActionDialog,
-    exportReport,
   } = useWorkspace()
   const incident = useIncident()
   const [params] = useSearchParams()
@@ -203,10 +202,7 @@ export function Changes() {
         description="Validated changes / Separate human approval / Controlled execution"
         actions={
           <>
-            <Button onClick={() => void exportReport('json', incident?.id)}>
-              <Download size={15} />
-              Incident report
-            </Button>
+            <IncidentReportButton incidentId={incident?.id} />
             {incident && <NextActionButton incident={incident} />}
           </>
         }

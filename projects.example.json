@@ -1,0 +1,12 @@
+{
+  "projects": [
+    {
+      "service": "my-service",
+      "name": "My service",
+      "type": "Service",
+      "environment": "Production",
+      "code": { "type": "github", "repo": "owner/repository", "ref": "main", "path": "", "pull_requests": false },
+      "logs": { "type": "folder", "path": "sample_services/my-service/logs" }
+    }
+  ]
+}

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Demo mode is loopback-only. A cloud deployment may add its own host name here, but only behind a
     # platform sign-in (Azure Container Apps authentication), which the app then also checks per request.
     demo_hosts: str = Field("", validation_alias="AGENTICA_DEMO_HOSTS")
+    github_token: SecretStr = Field(SecretStr(""), validation_alias="AGENTICA_GITHUB_TOKEN")  # private repositories and pull requests
+    projects_file: str = Field("", validation_alias="AGENTICA_PROJECTS_FILE")  # which project list to use (default: projects.json)
+    github_use_cli: bool = Field(False, validation_alias="AGENTICA_GITHUB_USE_CLI")  # local development: borrow the token of the signed-in GitHub CLI
     require_platform_auth: bool = Field(False, validation_alias="AGENTICA_REQUIRE_PLATFORM_AUTH")
 
 

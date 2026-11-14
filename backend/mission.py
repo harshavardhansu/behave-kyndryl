@@ -43,6 +43,7 @@ STEPS: list[tuple[str, str, list[str]]] = [
 STEP_OF = {role: step for step, _, roles in STEPS for role in roles}
 
 MAX_ITERATIONS = 3
+MIN_CAUSE_CONFIDENCE = 0.6  # below this a root cause is a guess: no fix may be built on it without a human saying so
 RUNNING_STATUSES = {"Analysing", "Working"}
 OPEN_STATUSES = RUNNING_STATUSES | {"Awaiting team approval", "Awaiting decision", "Awaiting resolution review", "Paused"}
 SIMULATED_MODE = "SIMULATED / rule-based planner"
@@ -52,7 +53,7 @@ GateType = Literal["team", "root-cause", "fix", "resolution"]
 
 class DecisionInput(StrictModel):
     gateId: str = Field(min_length=3, max_length=60)
-    decision: Literal["approve", "reject", "resolve", "iterate", "escalate"]
+    decision: Literal["approve", "reject", "resolve", "handoff", "iterate", "escalate"]
     addRoles: list[str] = Field(default_factory=list, max_length=13)
     removeRoles: list[str] = Field(default_factory=list, max_length=13)
     note: str = Field("", max_length=600)
@@ -274,7 +275,21 @@ def _context(state: dict, incident_id: str) -> dict:
         "evidence": [record for record in state["evidence"] if record["incidentId"] == incident_id][:12],
         "hypotheses": [record for record in state["hypotheses"] if record["incidentId"] == incident_id],
         "change": next((record for record in state["changes"] if record["incidentId"] == incident_id), None),
+        # Only the Payment API sandbox can have a fix applied and measured by this system. Everywhere else the
+        # mission ends with an approved solution that the owning team implements.
+        "canApplyFix": is_payment_sandbox(incident),
+        "hasSource": _has_source(incident),
     }
+
+
+def _has_source(incident: dict) -> bool:
+    """Is a repository connected for this incident's service? (Listing a GitHub project is cached.)"""
+    from .connectors import Projects
+
+    try:
+        return bool(Projects.load().resolve(incident).code.paths())
+    except Exception:  # noqa: BLE001 - a broken connector must never stop a mission
+        return False
 
 
 def _current(mission: dict) -> dict:
@@ -375,7 +390,7 @@ def sync_records(state: dict, mission: dict) -> None:
             if target:
                 target["status"] = "Scheduled" if decision["decision"] == "approve" else "Draft"
 
-    deployed = (current.get("sandboxChange") or {}).get("status") == "SUCCEEDED" or ("fix" in approved and mission["status"] in {"Awaiting resolution review", "Resolved"})
+    deployed = (current.get("sandboxChange") or {}).get("status") == "SUCCEEDED" or ("fix" in approved and mission["status"] in {"Awaiting resolution review", "Resolved"} and incident.get("synthetic") and not (current.get("outcome") or {}).get("solutionReady"))
     if deployed and change and not current.get("deploymentId"):
         sandbox = current.get("sandboxChange") or {}
         deployment_id = identifier("DEP")
@@ -423,7 +438,7 @@ def sync_records(state: dict, mission: dict) -> None:
         previous = incident["status"]
         incident["status"] = target
         audit(state, system, "Incident status updated by agent mission", incident["id"], incident, previous=previous, next_state=target, evidence=mission["id"])
-    incident["workflowStatus"] = "Running" if mission["status"] in RUNNING_STATUSES else "Completed" if mission["status"] == "Resolved" else "Idle"
+    incident["workflowStatus"] = "Running" if mission["status"] in RUNNING_STATUSES else "Completed" if mission["status"] in {"Resolved", "Solution ready"} else "Idle"
 
     if mission["status"] == "Resolved":
         if change and change["status"] != "Completed":
@@ -576,6 +591,12 @@ def decide(state: dict, mission_id: str, payload: DecisionInput, user: dict) -> 
             mission["resolution"] = {"by": user["name"], "at": now(), "note": note, "iteration": mission["iteration"]}
             current["completedAt"] = now()
             _event(mission, "resolved", f"{user['name']} confirmed the issue is resolved." + (f" {note}" if note else ""), actor=user["name"])
+        elif payload.decision == "handoff":
+            # The solution is complete and approved, but this system cannot apply it: hand it to the owning team.
+            mission["status"] = "Solution ready"
+            mission["handoff"] = {"by": user["name"], "at": now(), "note": note, "iteration": mission["iteration"]}
+            current["completedAt"] = now()
+            _event(mission, "handoff", f"{user['name']} handed the approved solution to the owning team to implement." + (f" {note}" if note else ""), actor=user["name"])
         elif payload.decision == "iterate":
             learning = outcome.get("detail", "Not resolved.") + (f" Reviewer note: {note}" if note else "")
             current["learnings"].append(learning)
@@ -587,8 +608,8 @@ def decide(state: dict, mission_id: str, payload: DecisionInput, user: dict) -> 
             mission["status"] = "Escalated"
             _event(mission, "escalated", f"{user['name']} escalated the incident." + (f" {note}" if note else ""), actor=user["name"])
         else:
-            raise HTTPException(422, "Choose resolve, iterate or escalate.")
-        if mission["status"] in {"Resolved", "Escalated"}:
+            raise HTTPException(422, "Choose resolve, hand over, iterate or escalate.")
+        if mission["status"] in {"Resolved", "Solution ready", "Escalated"}:
             mission["pendingGate"] = None
 
     current["decisions"].append(record)
@@ -680,10 +701,23 @@ def _ask_tool(mission: dict, key: str, method: str, *args):
 
 
 class MissionTools:
-    """Real actions a mission may take on the local Payment API sandbox, only after human approval."""
+    """Real actions a mission may take, only after human approval: a change on the local Payment API
+    sandbox, or a pull request on a connected project that opted in."""
 
-    def __init__(self, sandbox):
+    def __init__(self, sandbox=None, projects=None):
         self.sandbox = sandbox
+        self.projects = projects
+
+    def open_pull_request(self, request: dict) -> dict:
+        from .connectors import Projects
+        from .fix_delivery import open_pull_request
+
+        incident = request["incident"]
+        try:
+            code = (self.projects or Projects.load()).resolve(incident, self.sandbox).code
+            return open_pull_request(code, request["edits"], incident["id"], request["missionId"], f"Fix {incident['id']}: {incident['title']}", request["body"])
+        except Exception as error:  # noqa: BLE001 - reported to humans, never hidden
+            return {"status": "FAILED", "error": f"The pull request could not be opened: {type(error).__name__}."}
 
     def apply_fix(self, action: dict) -> dict:
         try:
@@ -699,6 +733,28 @@ class MissionTools:
         except Exception as error:  # noqa: BLE001
             return {"error": f"{type(error).__name__}: {error}"}
         return {"measurement": measurement, "logLines": read_recent_errors(self.sandbox)}
+
+
+def _pull_request_body(mission: dict, incident: dict, current: dict) -> str:
+    """What reviewers of the pull request need: the incident, the cause, the change, how to verify it and who approved."""
+    def finding(role: str) -> str:
+        return next((member["findings"]["summary"] for member in current["team"] if member["role"] == role and member.get("findings")), "")
+
+    approvals = [f"- {item['type']}: approved by {item['by']}" for item in current["decisions"] if item["decision"] == "approve" and item["type"] in {"root-cause", "fix"}]
+    parts = [
+        f"## {incident['id']}: {incident['title']}",
+        f"**Service:** {incident.get('service')} · **Severity:** {incident.get('severity')} · **Environment:** {incident.get('environment')}",
+        "### What was reported\n" + str(incident.get("description", "")),
+        "### Root cause\n" + (finding("root-cause") or "See the incident report."),
+        "### The fix, how to roll back and how to verify\n" + (finding("remediation") or "See the incident report."),
+    ]
+    for role, title in (("testing", "Tests to add"), ("validation", "Acceptance criteria")):
+        if finding(role):
+            parts.append(f"### {title}\n" + finding(role))
+    parts.append("### Approvals\n" + ("\n".join(approvals) or "- none recorded"))
+    parts.append(f"---\nProposed by AI agents and approved by people in mission {mission['id']}. The change has not been run or tested by the agents: "
+                 "review it and let this repository's pipeline test it before merging.")
+    return redact("\n\n".join(parts))
 
 
 SANDBOX_FIX = {"release": "3.8.1", "pool_size": 20}
@@ -736,7 +792,27 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
         return False
     context = _context(state, mission["incidentId"])
     current = _current(mission)
-    sandbox = tools is not None and is_payment_sandbox(context["incident"])
+    sandbox = tools is not None and tools.sandbox is not None and is_payment_sandbox(context["incident"])
+    if current.get("pullRequest"):
+        context["pullRequest"] = current["pullRequest"]
+
+    # Connected project: once a human has approved the fix, open exactly that change as a pull request.
+    approved_fix = any(item["type"] == "fix" and item["decision"] == "approve" for item in current["decisions"])
+    proposal = next((member["findings"] for member in current["team"] if member["role"] == "remediation" and member.get("findings")), None) or {}
+    patch = proposal.get("patch") or {}
+    if mission["status"] == "Working" and tools is not None and approved_fix and patch.get("deliverable") and "pullRequest" not in current:
+        incident = context["incident"]
+        result = _ask_tool(mission, f"pull-request:{mission['iteration']}", "open_pull_request", {
+            "incident": {key: incident.get(key) for key in ("id", "title", "service", "environment", "severity")},
+            "missionId": mission["id"], "edits": patch["edits"], "body": _pull_request_body(mission, incident, current),
+        })
+        current["pullRequest"] = result
+        if result.get("status") == "OPENED":
+            _event(mission, "pull-request", f"Opened pull request #{result['number']} with the human-approved fix on branch {result['branch']} ({result['url']}). Nothing was merged: the project's pipeline and owners decide.", actor="Release coordination", role="release")
+        else:
+            _event(mission, "pull-request-failed", f"{result.get('error') or 'The pull request was not opened.'} The approved change is still shown in the report for the owning team.", actor="System")
+        audit(state, {"name": "Agent mission", "role": "Release coordination"}, "Pull request opened by mission" if result.get("status") == "OPENED" else "Pull request not opened", mission["id"], incident, next_state=str(result.get("url") or result.get("status")))
+        return True
 
     # Real sandbox: once a human has approved the fix, apply exactly that change and verify it.
     fix_approved = any(item["type"] == "fix" and item["decision"] == "approve" for item in current["decisions"])
@@ -791,21 +867,21 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
             current["outcome"] = outcome
             mission["status"] = "Awaiting resolution review"
             _event(mission, "measured", ("Outcome: resolved. " if resolved else "Outcome: not resolved. ") + outcome["detail"], actor="Validation", role="validation")
-            options = {"resolve": "Confirm resolved", "iterate": "Start another iteration", "escalate": "Escalate"}
+            options = {"resolve": "Confirm resolved", "handoff": "Hand over the solution", "iterate": "Start another iteration", "escalate": "Escalate"}
             _gate(mission, "resolution", "Confirm the measured outcome", outcome["detail"], options[recommendation], "workflow:run")
             return False
         _event(mission, "sandbox-failed", f"Could not measure the sandbox ({measured.get('error')}); falling back to the planner's assessment.", actor="System")
 
     if step_index >= len(STEPS):
-        context["findings"] = [{"role": member["role"], "summary": member["findings"]["summary"]} for member in current["team"] if member.get("findings")]
+        context["findings"] = [{"role": member["role"], "summary": member["findings"]["summary"], "confidence": member["findings"].get("confidence", 0)} for member in current["team"] if member.get("findings")]
         context["decisions"] = [{"gate": decision["type"], "decision": decision["decision"], "by": decision["by"]} for decision in current["decisions"]]
         outcome = _ask(brain, mission, f"evaluate:{mission['iteration']}", "evaluate", context, team_roles, mission["iteration"])
         current["outcome"] = outcome
         _note_fallback(mission, outcome.get("source"), "the outcome review")
         mission["status"] = "Awaiting resolution review"
-        _event(mission, "evaluated", ("Outcome: resolved. " if outcome["resolved"] else "Outcome: not resolved. ") + outcome["detail"])
-        options = {"resolve": "Confirm resolved", "iterate": "Start another iteration", "escalate": "Escalate"}
-        _gate(mission, "resolution", "Confirm the outcome", outcome["detail"], options[outcome["recommendation"]], "workflow:run")
+        _event(mission, "evaluated", ("Outcome: resolved. " if outcome["resolved"] else "Outcome: solution ready to hand over. " if outcome.get("solutionReady") else "Outcome: not resolved. ") + outcome["detail"])
+        options = {"resolve": "Confirm resolved", "handoff": "Hand over the solution", "iterate": "Start another iteration", "escalate": "Escalate"}
+        _gate(mission, "resolution", "Confirm the solution is ready to hand over" if outcome["recommendation"] == "handoff" else "Confirm the outcome", outcome["detail"], options[outcome["recommendation"]], "workflow:run")
         return False
     step_id, step_name, _ = STEPS[step_index]
     members = [member for member in current["team"] if member["step"] == step_id]
@@ -837,7 +913,14 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
     if step_id == "diagnose" and "root-cause" in by_role:
         finding = by_role["root-cause"]["findings"]
         mission["status"] = "Awaiting decision"
-        _gate(mission, "root-cause", "Approve the root cause", f"{finding['summary']} Confidence {finding['confidence']:.2f}.", "Approve to move on to the fix, or reject to investigate further.")
+        if finding["confidence"] < MIN_CAUSE_CONFIDENCE:
+            # The agent itself is not sure. Say so plainly instead of presenting a guess as a diagnosis.
+            _event(mission, "low-confidence", f"The root cause is not established (confidence {finding['confidence']:.2f}). Recommending rejection so the team investigates further.")
+            _gate(mission, "root-cause", "Root cause not established: reject or accept at your own judgement",
+                  f"LOW CONFIDENCE ({finding['confidence']:.2f}). The agents could not establish the cause from the code, logs and evidence they can reach. {finding['summary']}",
+                  "Reject to investigate further. Approve only if you know the cause yourself.")
+        else:
+            _gate(mission, "root-cause", "Approve the root cause", f"{finding['summary']} Confidence {finding['confidence']:.2f}.", "Approve to move on to the fix, or reject to investigate further.")
         return False
     if step_id == "remediate" and "remediation" in by_role:
         finding = by_role["remediation"]["findings"]
@@ -846,7 +929,18 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
         if sandbox:
             action = _sandbox_action(state, context["incident"])
             detail = f"Exact action on approval: set the live Payment API sandbox to release {action['release']} with pool size {action['pool_size']}, then re-measure. Proposal: {detail}"
-        _gate(mission, "fix", "Approve the fix for release", detail, "A different person from the mission starter must approve.", "approval:decide")
+        patch = finding.get("patch") or {}
+        recommendation = "A different person from the mission starter must approve."
+        if patch.get("valid"):
+            recommendation += (" On approval this exact change is opened as a pull request on a new branch; nothing is merged." if patch.get("deliverable")
+                               else " The exact change is shown below; this project is not set up to receive pull requests, so the owning team applies it.")
+        elif patch.get("problems"):
+            recommendation = "Reject to have the agents retry: the proposed code edits did not fit the current files, so the change is unverified. " + recommendation
+        elif context.get("hasSource") and not context.get("canApplyFix"):
+            recommendation = "Check carefully: the agents gave no exact code change for this proposal. Reject to have them retry, unless the fix is not a code change. " + recommendation
+        _gate(mission, "fix", "Approve the fix for release", detail, recommendation, "approval:decide")
+        if patch.get("files") or patch.get("problems"):
+            mission["pendingGate"]["patch"] = redact({"files": patch.get("files", []), "problems": patch.get("problems", []), "valid": bool(patch.get("valid")), "deliverable": bool(patch.get("deliverable")), "source": patch.get("source", "")})
         return False
     return True
 

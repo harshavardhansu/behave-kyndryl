@@ -13,7 +13,7 @@ import {
     Users,
     XCircle,
 } from 'lucide-react'
-import type { Incident, Mission, MissionGate } from '../../types'
+import type { Incident, Mission, MissionGate, MissionPatch } from '../../types'
 import { isOpenMission, ROLE_NAMES } from '../../lib/missions'
 import { post } from '../../lib/api'
 import { errorMessage, time } from '../../lib/format'
@@ -28,6 +28,7 @@ const STATUS_TONE: Record<string, 'success' | 'warning' | 'critical' | 'neutral'
     'Awaiting decision': 'warning',
     'Awaiting resolution review': 'warning',
     Resolved: 'success',
+    'Solution ready': 'success',
     Escalated: 'critical',
     Cancelled: 'neutral',
     Paused: 'neutral',
@@ -134,13 +135,17 @@ function GateCard({ mission, gate, incident }: { mission: Mission; gate: Mission
             ]
             : gate.type === 'resolution'
                 ? [
-                    { decision: 'resolve', label: 'Confirm resolved', variant: gate.recommendation.startsWith('Confirm') ? 'primary' : 'secondary', icon: CheckCircle2 },
+                    // A fix this system could not apply is handed over, never called "resolved".
+                    gate.recommendation.startsWith('Hand')
+                        ? { decision: 'handoff', label: 'Hand over the solution', variant: 'primary' as const, icon: CheckCircle2 }
+                        : { decision: 'resolve', label: 'Confirm resolved', variant: gate.recommendation.startsWith('Confirm') ? 'primary' as const : 'secondary' as const, icon: CheckCircle2 },
                     { decision: 'iterate', label: 'Start another iteration', variant: gate.recommendation.startsWith('Start') ? 'primary' : 'secondary', icon: RotateCcw },
                     { decision: 'escalate', label: 'Escalate', variant: gate.recommendation.startsWith('Escalate') ? 'primary' : 'secondary', icon: CircleAlert },
                 ]
                 : [
-                    { decision: 'approve', label: gate.type === 'fix' ? 'Approve fix' : 'Approve root cause', variant: 'primary', icon: CheckCircle2 },
-                    { decision: 'reject', label: 'Reject, investigate further', variant: 'secondary', icon: XCircle },
+                    // A low-confidence root cause recommends rejection: the safe choice becomes the main button.
+                    { decision: 'approve', label: gate.type === 'fix' ? 'Approve fix' : gate.recommendation.startsWith('Reject') ? 'Approve anyway' : 'Approve root cause', variant: gate.recommendation.startsWith('Reject') ? 'secondary' : 'primary', icon: CheckCircle2 },
+                    { decision: 'reject', label: 'Reject, investigate further', variant: gate.recommendation.startsWith('Reject') ? 'primary' : 'secondary', icon: XCircle },
                 ]
 
     return (
@@ -154,6 +159,7 @@ function GateCard({ mission, gate, incident }: { mission: Mission; gate: Mission
             </div>
             <p className="mission-gate-detail">{gate.detail}</p>
             <p className="mission-gate-recommendation"><Bot size={13} /> Orchestrator recommends: {gate.recommendation}</p>
+            {gate.patch && <PatchView patch={gate.patch} />}
             {gate.type === 'team' && <TeamEditor mission={mission} remove={remove} add={add} onToggle={toggle} />}
             <label className="mission-note">
                 <span>{gate.type === 'team' || gate.type === 'resolution' ? 'Note (optional; required to reject)' : 'Reason (required to reject)'}</span>
@@ -175,6 +181,35 @@ function GateCard({ mission, gate, incident }: { mission: Mission; gate: Mission
                 ))}
             </div>
         </section>
+    )
+}
+
+/** The exact code change the approver is asked to accept: one diff per file. */
+function PatchView({ patch }: { patch: MissionPatch }) {
+    return (
+        <div className="mission-patch" aria-label="Proposed code change">
+            <p className="mission-patch-title">
+                Proposed code change{patch.source ? ` · ${patch.source}` : ''}
+                <span className={`mission-patch-state ${patch.valid ? 'is-ok' : 'is-bad'}`}>
+                    {patch.valid ? (patch.deliverable ? 'Checked against the current files · becomes a pull request on approval' : 'Checked against the current files') : 'Does not fit the current files'}
+                </span>
+            </p>
+            {patch.problems.map((problem) => <p key={problem} className="mission-patch-problem">{problem}</p>)}
+            {patch.files.map((file) => (
+                <details key={file.path} open={patch.files.length <= 2}>
+                    <summary>
+                        <code>{file.path}</code>
+                        <span className="mission-patch-plus">+{file.additions}</span>
+                        <span className="mission-patch-minus">-{file.deletions}</span>
+                    </summary>
+                    <pre>
+                        {file.diff.split('\n').slice(2).map((line, index) => (
+                            <span key={index} className={line.startsWith('+') ? 'is-add' : line.startsWith('-') ? 'is-del' : line.startsWith('@@') ? 'is-hunk' : undefined}>{line || ' '}{'\n'}</span>
+                        ))}
+                    </pre>
+                </details>
+            ))}
+        </div>
     )
 }
 
@@ -217,6 +252,7 @@ export function MissionPanel({ incident, mission }: { incident: Incident; missio
         }
     }
 
+    const pullRequest = mission?.iterations[mission.iterations.length - 1]?.pullRequest
     if (!mission || !open) {
         return (
             <section className="mission-panel mission-empty">
@@ -224,6 +260,12 @@ export function MissionPanel({ incident, mission }: { incident: Incident; missio
                     <span className="mission-empty-icon"><Bot size={20} /></span>
                     <div>
                         <h4>{mission ? `Last mission ${mission.status.toLowerCase()}` : 'No agent mission yet'}</h4>
+                        {pullRequest?.status === 'OPENED' && (
+                            <p className="mission-pr">
+                                <a href={pullRequest.url} target="_blank" rel="noreferrer">Pull request #{pullRequest.number}</a> opened with the approved fix on <code>{pullRequest.branch}</code>. Not merged: the project's pipeline and owners decide.
+                            </p>
+                        )}
+                        {pullRequest && pullRequest.status !== 'OPENED' && <p className="mission-pr is-bad">{pullRequest.error}</p>}
                         <p>
                             {mission
                                 ? `${mission.id} ended after ${mission.iteration} iteration(s). Start a new mission to have the Orchestrator analyse the ticket again.`

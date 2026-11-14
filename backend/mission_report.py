@@ -79,8 +79,8 @@ def generate_mission_report_pdf(incident: dict, mission: dict, state: dict) -> b
     # ---- Title and summary ------------------------------------------------
     para("INCIDENT INVESTIGATION &amp; RESOLUTION REPORT", "DocTitle")
     para(f"<b>{_escape(incident_id)}</b> · {_escape(incident.get('title'))} · Mission {_escape(mission['id'])}", "DocSubtitle")
-    verdict = "RESOLVED (confirmed by a human)" if resolved else {"Escalated": "ESCALATED to a human team", "Cancelled": "CANCELLED"}.get(mission.get("status"), f"NOT YET RESOLVED ({mission.get('status')})")
-    colour = "#16A34A" if resolved else "#D97706"
+    verdict = "RESOLVED (confirmed by a human)" if resolved else {"Solution ready": "SOLUTION READY: approved by humans and handed to the owning team (not applied by this system)", "Escalated": "ESCALATED to a human team", "Cancelled": "CANCELLED"}.get(mission.get("status"), f"NOT YET RESOLVED ({mission.get('status')})")
+    colour = "#16A34A" if resolved else "#2563EB" if mission.get("status") == "Solution ready" else "#D97706"
     story.append(Paragraph(f'<font color="{colour}"><b>Outcome: {_escape(verdict)}</b></font>', styles["Body"]))
     table([
         ["Service", "Environment", "Severity", "Iterations", "Agents used", "Tool calls", "Requested by"],
@@ -143,9 +143,24 @@ def generate_mission_report_pdf(incident: dict, mission: dict, state: dict) -> b
     # ---- Issues found vs solved --------------------------------------------
     heading("4. Issues found and what was solved")
     issues: list[list[str]] = []
-    root = next((m["findings"] for _, m in reversed(all_findings) if m["role"] == "root-cause"), None)
+    handed_over = mission.get("status") == "Solution ready"
+
+    def best(role: str) -> dict | None:
+        """The most confident finding of a role; the latest one wins a tie."""
+        found = [m["findings"] for _, m in all_findings if m["role"] == role]
+        return max(reversed(found), key=lambda f: f.get("confidence", 0)) if found else None
+
+    approved = {d["type"] for it in iterations for d in it.get("decisions", []) if d.get("decision") == "approve"}
+    root = best("root-cause")
     if root:
-        issues.append(["Root cause", root["summary"], "Solved and confirmed" if resolved else "Open"])
+        issues.append(["Root cause", root["summary"], "Solved and confirmed" if resolved else "Confirmed by a human" if "root-cause" in approved else "Open"])
+    fix = best("remediation")
+    if fix:
+        issues.append(["Proposed fix", fix["summary"], "Applied and confirmed" if resolved else "Approved; handed to the owning team" if handed_over else "Approved by a human" if "fix" in approved else "Awaiting approval"])
+    for role, label in (("testing", "Tests to add"), ("validation", "Acceptance criteria")):
+        check = best(role)
+        if check:
+            issues.append([label, check["summary"], "Met" if resolved else "To verify after the fix is implemented"])
     sandbox_change = next((it["sandboxChange"] for it in reversed(iterations) if it.get("sandboxChange")), None)
     if sandbox_change:
         active = sandbox_change.get("active") or {}
@@ -157,7 +172,11 @@ def generate_mission_report_pdf(incident: dict, mission: dict, state: dict) -> b
         failed = [label for key, label in (("technical_correctness", "correctness"), ("completeness", "completeness"), ("cross_agent_consistency", "consistency"), ("security_and_risk_acceptable", "security and risk"), ("human_approval_satisfied", "human approvals")) if report and not report.get(key)]
         if failed or gaps:
             later = it["number"] < len(iterations)
-            issues.append([f"Gap after iteration {it['number']}", "Validation failed on: " + (", ".join(failed) or "no failed check") + ". Not yet covered: " + (", ".join(gaps) or "nothing specific") + ".", "Addressed in a later iteration" if later and resolved else "Still open" if not resolved or not later else "Carried forward"])
+            issues.append([f"Gap after iteration {it['number']}", "Validation failed on: " + (", ".join(failed) or "no failed check") + ". Not yet covered: " + (", ".join(gaps) or "nothing specific") + ".", "Addressed in a later iteration" if later and (resolved or handed_over) else "Still open" if not resolved or not later else "Carried forward"])
+    pull = next((it["pullRequest"] for it in reversed(iterations) if it.get("pullRequest")), None)
+    if pull:
+        issues.append(["Pull request", f"#{pull.get('number')} on {pull.get('repository')} (branch {pull.get('branch')}): {pull.get('url')}" if pull.get("status") == "OPENED" else str(pull.get("error") or "Not opened."),
+                       "Opened; awaiting the project's pipeline, review and merge" if pull.get("status") == "OPENED" else "Not opened"])
     measurements = [e for e in evidence if str(e.get("title", "")).startswith("Measured workload")]
     for e in measurements:
         issues.append([f"Measurement {e['id']}", f"{e.get('title')}. {str(e.get('excerpt', ''))[:240]}", "Recorded"])
@@ -165,6 +184,16 @@ def generate_mission_report_pdf(incident: dict, mission: dict, state: dict) -> b
         table([["Item", "What we found", "Status"], *issues], [105, 337, 90])
     else:
         para("<i>No issues or measurements were recorded.</i>")
+
+    patch = (fix or {}).get("patch") or {}
+    if patch.get("files"):
+        para("<b>The exact code change</b> (" + ("checked against the current files" if patch.get("valid") else "did NOT fit the current files") + "):")
+        for file in patch["files"]:
+            para(f"<font face='Courier'>{_escape(file['path'])}</font> · +{file['additions']} / -{file['deletions']}")
+            for line in str(file["diff"]).split("\n")[2:80]:
+                colour = "#166534" if line.startswith("+") else "#991B1B" if line.startswith("-") else "#6B7280" if line.startswith("@@") else "#111827"
+                story.append(Paragraph(f'<font face="Courier" size="7.5" color="{colour}">{_escape(line).replace(" ", "&nbsp;") or "&nbsp;"}</font>', styles["Body"]))
+        story.append(Spacer(1, 6))
 
     # ---- Human decisions ----------------------------------------------------
     heading("5. Human decisions (every key step needed a person)")
@@ -190,13 +219,22 @@ def generate_mission_report_pdf(incident: dict, mission: dict, state: dict) -> b
     heading("7. Learnings carried between iterations and open items")
     for learning in mission.get("learnings", []) or ["Resolved without another iteration, so there were no learnings to carry forward." if resolved else "No learnings recorded yet."]:
         para("• " + _escape(learning))
+    if handed_over:
+        opened = next((it["pullRequest"] for it in reversed(iterations) if (it.get("pullRequest") or {}).get("status") == "OPENED"), None)
+        if opened:
+            para(f"<b>Next step:</b> the owning team reviews pull request #{opened['number']} ({_escape(opened['url'])}), lets the project's pipeline test it, and merges it. This system opened the pull request on a new branch only; it did not merge, deploy or test anything.")
+        else:
+            para("<b>Next step:</b> the owning team implements the approved fix, runs the proposed tests and confirms the acceptance criteria. This system did not change, deploy or test anything in the project.")
     if not resolved and outcome.get("missing"):
         para("<b>Still to do:</b> " + _escape(", ".join(outcome["missing"])))
     para("<i>All findings are AI-generated proposals for human review. Agents can read but never change anything; every change in this mission was approved by a person.</i>")
 
     # ---- Timeline --------------------------------------------------------------
     heading("8. Mission timeline (latest events)")
-    events = [[str(e.get("timestamp", ""))[11:19], e.get("actor", ""), e.get("message", "")] for e in mission.get("events", [])[-40:]]
+    def brief(message: str) -> str:  # the full findings are in section 3; the timeline only shows the order of events
+        return message if len(message) <= 260 else message[:259] + "…"
+
+    events = [[str(e.get("timestamp", ""))[11:19], e.get("actor", ""), brief(str(e.get("message", "")))] for e in mission.get("events", [])[-40:]]
     if events:
         table([["Time", "Actor", "Event"], *events], [52, 110, 370])
 

@@ -84,6 +84,8 @@ export interface Service {
   changes: string[]
   incidents: string[]
   position: { x: number; y: number }
+  /** A project connected through projects.json (its code is read through a connector). */
+  connected?: boolean
 }
 
 export interface Dependency {
@@ -380,6 +382,7 @@ export type MissionStatus =
   | 'Awaiting decision'
   | 'Awaiting resolution review'
   | 'Resolved'
+  | 'Solution ready'
   | 'Escalated'
   | 'Cancelled'
   | 'Paused'
@@ -459,6 +462,25 @@ export interface MissionGate {
   requires: string
   createdAt: string
   iteration: number
+  /** The exact code change proposed for a connected project (fix gate only). */
+  patch?: MissionPatch
+}
+
+export interface MissionPatch {
+  files: { path: string; additions: number; deletions: number; diff: string }[]
+  problems: string[]
+  valid: boolean
+  deliverable: boolean
+  source?: string
+}
+
+export interface MissionPullRequest {
+  status: 'OPENED' | 'FAILED' | 'SKIPPED'
+  url?: string
+  number?: number
+  branch?: string
+  repository?: string
+  error?: string
 }
 
 export interface MissionDecision {
@@ -481,6 +503,8 @@ export interface MissionIteration {
   learnings: string[]
   startedAt: string
   completedAt: string | null
+  /** The pull request opened with the human-approved fix, when the project accepts pull requests. */
+  pullRequest?: MissionPullRequest
 }
 
 export interface MissionEvent {

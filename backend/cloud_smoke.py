@@ -30,9 +30,16 @@ def main(incident: str = "INC-1043") -> int:
     def mission(mission_id: str) -> dict:
         return next(m for m in client.get(f"{BASE}/workspace").json()["missions"] if m["id"] == mission_id)
 
+    if incident == "--sync":  # re-create the Foundry agents from the current definitions, then stop
+        login("Administrator")
+        response = client.post(f"{BASE}/foundry/agents/sync", json={})
+        actions = sorted({item["action"] for item in response.json().get("results", [])}) if response.status_code == 200 else response.text[:200]
+        print("SYNC", response.status_code, actions)
+        return 0 if response.status_code == 200 else 1
+
     login("Incident Manager")
     for open_mission in client.get(f"{BASE}/workspace").json()["missions"]:
-        if open_mission["incidentId"] == incident and open_mission["status"] not in {"Resolved", "Escalated", "Cancelled"}:
+        if open_mission["incidentId"] == incident and open_mission["status"] not in {"Resolved", "Solution ready", "Escalated", "Cancelled"}:
             client.post(f"{BASE}/missions/{open_mission['id']}/cancel")
     started = client.post(f"{BASE}/incidents/{incident}/missions")
     if started.status_code != 201:
@@ -44,7 +51,7 @@ def main(incident: str = "INC-1043") -> int:
     def wait() -> dict:
         for _ in range(180):
             record = mission(mission_id)
-            if record["pendingGate"] or record["status"] in {"Resolved", "Escalated", "Cancelled", "Paused"}:
+            if record["pendingGate"] or record["status"] in {"Resolved", "Solution ready", "Escalated", "Cancelled", "Paused"}:
                 return record
             time.sleep(2)
         return mission(mission_id)
@@ -67,7 +74,10 @@ def main(incident: str = "INC-1043") -> int:
         elif gate["type"] == "resolution":
             outcome = record["iterations"][-1]["outcome"]
             print("   outcome:", outcome["detail"][:200])
-            decide({"resolve": "resolve", "iterate": "iterate"}.get(outcome["recommendation"], "escalate"), note="Reviewed by the cloud smoke test")
+            decide({"resolve": "resolve", "handoff": "handoff", "iterate": "iterate"}.get(outcome["recommendation"], "escalate"), note="Reviewed by the cloud smoke test")
+        elif gate["recommendation"].startswith("Reject"):
+            print("   low confidence, rejecting:", gate["detail"][:160])
+            decide("reject", note="Root cause not established; investigate further.")
         else:
             decide("approve")
 
@@ -90,7 +100,7 @@ def main(incident: str = "INC-1043") -> int:
     except OSError:
         path = "(not saved)"
     print("PDF", report.status_code, len(report.content), "bytes", path)
-    return 0 if record["status"] == "Resolved" and not fallbacks else 2
+    return 0 if record["status"] in {"Resolved", "Solution ready"} and not fallbacks else 2
 
 
 if __name__ == "__main__":

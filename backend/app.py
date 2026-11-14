@@ -33,6 +33,7 @@ from .foundry_runtime import FoundryAgentService, foundry_agent_status
 from .foundry_brain import FoundryBrain
 from .mission import STEPS, DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
+from .connectors import Projects, ensure_services
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
 from .sandbox_records import record_measurement
@@ -135,6 +136,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     operation.update(status="MANUAL_INTERVENTION_REQUIRED", completedAt=now(), error="The sandbox operation outcome is uncertain after restart. Inspect active configuration before taking further action.")
                     audit(state, {"name": "System", "role": "Recovery"}, "Payment sandbox operation requires review", operation["id"], outcome="MANUAL_INTERVENTION_REQUIRED")
             pause_interrupted(state)
+            ensure_services(state, Projects.load(), now())  # connected projects (projects.json) appear in the service catalog
         database.mutate(recover)
         if config.foundry_auto_sync and isinstance(application.state.mission_brain, FoundryBrain) and not database.read().get("foundryAgents"):
             def sync_agents() -> None:
@@ -167,7 +169,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     application.state.sandbox_control = sandbox_control or (
         LocalPaymentSandbox() if os.getenv("PAYMENT_SANDBOX_MODE", "local") == "local" else PaymentSandboxControlAdapter()
     )
-    application.state.mission_tools = MissionTools(application.state.sandbox_control) if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None
+    application.state.mission_tools = MissionTools(application.state.sandbox_control if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None)
     if hasattr(application.state.mission_brain, "sandbox") and isinstance(application.state.sandbox_control, LocalPaymentSandbox):
         application.state.mission_brain.sandbox = application.state.sandbox_control
     sandbox_operation_lock = Lock()
@@ -492,6 +494,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         backup = database.backup(Path("data") / "backups" / f"agentica-{stamp}.db")
         is_fresh = payload.mode == "fresh"
         target_state = fresh_workspace() if is_fresh else seed_workspace(True)
+        ensure_services(target_state, Projects.load(), now())
         database.reset(target_state)
         action_name = "Fresh workspace initialized" if is_fresh else "Demo data reset"
         next_state = "Fresh workspace (demo activities cleared)" if is_fresh else "Fresh demo stories"

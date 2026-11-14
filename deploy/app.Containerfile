@@ -23,6 +23,7 @@ RUN pip install -r backend-requirements.txt -r payment-requirements.txt
 COPY backend ./backend
 COPY payment_api ./payment_api
 COPY sample_services ./sample_services
+COPY projects.json ./
 COPY --from=web /web/dist ./dist
 
 # Run as an unprivileged user; data/ holds only the sandbox's throwaway files (the workspace lives in PostgreSQL).

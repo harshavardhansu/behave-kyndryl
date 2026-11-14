@@ -164,6 +164,36 @@ A sample is in `docs/sample-reports/`.
 `RUN_LIVE_FOUNDRY=1 .venv/bin/python -m pytest backend/tests/test_live_foundry.py -s` (needs the agents provisioned and `python -m backend.azure_login`; costs a few cents).
 After changing agent prompts or tools, re-run `python -m backend.foundry_provision` to update them in Foundry.
 
+## Connect any project (configuration only)
+
+The agents do not depend on how a project is built. They call generic tools (`list_repo_files`,
+`read_repo_file`, `search_repo`, `list_changes`, `search_logs`, ...) and a **connector** translates each
+call to where the project really lives. Connecting a project needs one entry in `projects.json` and no
+change to the project itself:
+
+```json
+{ "service": "employee-portal", "name": "Employee portal",
+  "code": { "type": "github", "repo": "owner/repository", "ref": "main", "path": "" } }
+```
+
+- **Code connectors today:** any GitHub repository (any language; files are read as text, and the
+  latest commits with the files they touched are listed) and local folders.
+- **Log connectors today:** local log folders, the live sandbox log and logs attached as evidence.
+- Everything is read-only. Hidden files, `.env`, vendored folders, lock files and binaries are never read.
+- A private repository needs a read-only token in `AGENTICA_GITHUB_TOKEN` (environment only).
+- **The fix is an exact code change.** The remediation agent returns its fix as edits (`path`, the
+  lines to find, what they become). Every edit is checked against the real file and shown as a diff at
+  the fix gate; edits that do not fit are flagged, never applied.
+- **Pull requests (opt-in per project).** With `"pull_requests": true` and a token, approving the fix
+  (by a second person) pushes exactly that change to a new `behave/<incident>-<mission>` branch and opens
+  a pull request. Nothing is merged, the base branch is never written, and hidden files, `.env` and
+  `.github` pipelines can never be edited. The project's own pipeline tests it; its owners merge it.
+- A mission on a connected project ends as **Solution ready** (approved solution or open pull
+  request handed to the owning team), never as "Resolved": the agents did not run or measure the fix.
+- A root cause with a confidence below 0.6 can never become a solution; the gate recommends rejecting it.
+- Not built yet: connectors for Log Analytics, Splunk or Datadog; reading the pull request's pipeline
+  result and measuring recovery after the merge; adding new files (such as tests) in a pull request.
+
 ## Deploying to Azure
 
 One container runs the website, the API, the mission engine and the Payment API sandbox (`deploy/app.Containerfile`).

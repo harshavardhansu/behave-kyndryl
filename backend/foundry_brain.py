@@ -29,7 +29,8 @@ from .domain import Settings, redact
 from .foundry_agents import AGENTS_CATALOG, get_agent
 from .foundry_runtime import FoundryAgentService, agent_instructions, agent_name, extract_json
 from .investigation_tools import InvestigationTools
-from .mission import MAX_ITERATIONS, ROLE_INFO, SPECIALISTS, SimulatedBrain
+from .fix_delivery import build_patch
+from .mission import MAX_ITERATIONS, ROLE_INFO, SPECIALISTS, SimulatedBrain, MIN_CAUSE_CONFIDENCE
 from .store import Store
 
 Role = Literal[
@@ -79,6 +80,19 @@ class AgentFinding(_Strict):
     confidence: float
 
 
+class CodeEdit(_Strict):
+    path: str
+    find: str
+    replace: str
+
+
+class FixProposal(_Strict):
+    summary: str
+    evidence_ids: list[str]
+    confidence: float
+    edits: list[CodeEdit]
+
+
 class ValidationReport(_Strict):
     technical_correctness: bool
     completeness: bool
@@ -90,6 +104,7 @@ class ValidationReport(_Strict):
 
 class Outcome(_Strict):
     resolved: bool
+    solution_ready: bool
     detail: str
     recommendation: Literal["resolve", "iterate", "escalate"]
     missing: list[str]
@@ -104,13 +119,15 @@ SAFETY = (
 
 PLAN_TASK = (
     "TASK: form the team for this iteration. Read the ticket and its evidence and choose ONLY the specialists this ticket needs "
-    "from the 13 available specialists. Keep the team small, give each chosen specialist a reason and a concrete task, and give a reason "
+    "from the 13 available specialists. Keep the team small, but make it able to finish the job in ONE iteration: always include root-cause and "
+    "remediation, and at least one of testing or validation, so the iteration ends with a reviewed solution and not only a diagnosis. "
+    "Give each chosen specialist a reason and a concrete task, and give a reason "
     "for every specialist left out. In later iterations use the learnings: keep members whose work was useful and add specialists that "
     "cover what was missed. analysis: 2-3 sentences on what you see and why this team. " + SAFETY
 )
 
 WORK_TASK = (
-    "TASK: write your finding for your assigned task: 1-3 specific sentences based ONLY on the ticket, the evidence, earlier findings and what your read-only tools returned (use the tools to check facts first), "
+    "TASK: write your finding for your assigned task: 2-5 specific sentences that deliver exactly what 'your_deliverable' asks for, based ONLY on the ticket, the evidence, earlier findings and what your read-only tools returned (use the tools to check facts first), "
     "the evidence IDs that support it, and a calibrated confidence between 0 and 1. Never invent logs, metrics, test results or deployments; "
     "if evidence is missing, say what is missing. A remediation finding proposes a fix and a rollback plan for human review. "
     "A release finding only records that a human-approved release is ready. " + SAFETY
@@ -120,9 +137,43 @@ EVALUATE_TASK = (
     "TASK: final validation: judge whether this iteration resolved the incident. Check five things and report each in 'validation': "
     "technical correctness (does the root cause explain all symptoms and does the fix remove it), completeness (telemetry, root cause, fix and "
     "validation covered), consistency across agents, security and operational risk acceptable (rollback documented), and human approvals present "
-    "(see human_decisions). Be conservative: resolved=true only with a well-supported root cause, a human-approved fix and clear acceptance "
-    "criteria or a measured recovery. Otherwise use recommendation 'iterate' and list in 'missing' the specialists whose work would close the gap; "
+    "(see human_decisions). Technical correctness FAILS when the root-cause finding itself says the cause was not identified or has a confidence below 0.6, "
+    "when the fix addresses something different from the root-cause finding, or when the 'cause' is only that a feature is absent from the code "
+    "(something that never existed cannot explain a recent failure; the ticket probably belongs to another service). Be conservative: resolved=true only with a well-supported root cause, a human-approved fix and clear acceptance "
+    "criteria or a measured recovery. Read 'fix_delivery': when it says this system cannot apply the fix, nothing can be deployed, executed or "
+    "measured here, so do NOT ask for executed test results, pass rates or measured recovery, and never fail completeness for their absence. "
+    "In that case keep resolved=false and set solution_ready=true when the solution is complete enough for the owning team to implement: a root cause "
+    "supported by code or log evidence, a concrete fix (what to change and where), a rollback plan, a way to verify it (test cases or acceptance "
+    "criteria), and human approval of the root cause and of the fix. Judge completeness on those five items only. "
+    "When neither resolved nor solution_ready, use recommendation 'iterate' and list in 'missing' the specialists whose work would close the gap; "
     "use 'escalate' when iterations are exhausted. detail: 1-3 sentences for the human reviewer. " + SAFETY
+)
+
+
+# What each specialist must hand back. It rides in the request, so it can be tuned without re-creating the agents.
+DELIVERABLE = {
+    "default": "Your specific finding for your task, with the facts you checked.",
+    "intake": "What is broken, for whom and since when, plus which facts are still missing from the ticket.",
+    "logs": "The exact log lines or patterns that matter (with counts and first/last time) and what they prove.",
+    "observability": "Which metric moved, by how much, where (region, endpoint, dependency) and since when.",
+    "repository": "The file, function or setting involved (exact path and names as they appear in the code) and the commit that introduced it, if any.",
+    "knowledge": "The runbook or past resolution that applies and the step from it that matters here; say so if nothing applies.",
+    "root-cause": "The cause as a mechanism: name the exact file and function or setting, explain how it produces EACH reported symptom, and name the evidence for each. Search the code for the feature the ticket names. If you cannot find a cause, or the code does not contain that feature at all, say exactly that (the ticket may belong to another service) and give a confidence below 0.4. A feature that never existed in the code cannot be the cause of something that recently stopped working. An honest 'not found' is a correct answer; a guess is not.",
+    "remediation": "Fix ONLY the root cause given in earlier_findings. If that finding says the cause was not identified, or its confidence is below 0.6, do NOT invent a cause or design new features: say that no fix can be proposed yet and what must be found out first, with a confidence below 0.3. Otherwise read the WHOLE affected file yourself first (keep reading while a result says INCOMPLETE). If the code looks already correct, you have not seen all of it: use search_repo for other definitions of the same function or setting before you conclude. Then give: CHANGE - the exact file and function and what to replace with what (quote names from the code); ROLLBACK - how to undo it; VERIFY - how to confirm it worked.",
+    "testing": "2-4 concrete test cases (a name and what each asserts) that fail before the fix and pass after it. If nothing was executed, say the tests are proposed, never that they passed.",
+    "security": "Whether the incident or the proposed fix has a security impact, naming any missing access check, exposed secret or unsafe setting you actually saw in the code or evidence.",
+    "validation": "Measurable acceptance criteria for calling this fixed, and which of them the evidence already meets. If the root cause was not established, say that there is nothing to validate yet.",
+    "risk": "The risk of the proposed change (Low, Medium or High) with the blast radius and the reason.",
+    "release": "The rollout steps for the approved fix (pull request, review, pipeline, deploy) and the trigger for rolling back.",
+    "summary": "A plain-language summary for the post-incident review: what happened, why, what was decided and what is left to do.",
+}
+
+
+EDITS_DELIVERABLE = (
+    " ALSO return the code change in 'edits', a list of {path, find, replace}: 'path' exactly as list_repo_files shows it; 'find' is one or more "
+    "COMPLETE lines copied exactly from the current file, including indentation, with enough lines to appear only once in the file; 'replace' is "
+    "what those lines become (an empty string deletes them). Change only what the fix needs and only files that already exist. Return an empty "
+    "list when no fix can be proposed or the fix is not a code change."
 )
 
 
@@ -263,6 +314,14 @@ class FoundryBrain:
             })
         if not selected:
             return self._fallback_plan(context, iteration, learnings, previous_roles, "The model proposed an empty team.")
+        # A team must be able to finish: diagnose, propose a fix and check it. Add what the Orchestrator left out.
+        needed = [role for role in ("root-cause", "remediation") if role not in seen]
+        if not seen & {"testing", "validation"}:
+            needed.append("validation")
+        for role in needed:
+            seen.add(role)
+            selected.append({"role": role, "reason": "Added automatically: every team needs a diagnosis, a proposed fix and a check so one iteration can end with a reviewed solution.", "task": ROLE_INFO[role]["purpose"]})
+        selected.sort(key=lambda item: SPECIALISTS.index(item["role"]))
         reasons = {item.role: _clip(item.reason, 300) for item in plan.skipped}
         skipped = [{"role": role, "reason": reasons.get(role) or "Not selected by the Orchestrator for this iteration."} for role in SPECIALISTS if role not in seen]
         return {"analysis": _clip(plan.analysis, 600), "selected": selected, "skipped": skipped, "source": f"AI-GENERATED / {label}"}
@@ -274,7 +333,7 @@ class FoundryBrain:
 
     def _clean_finding(self, item: AgentFinding | Finding, available: set[str], label: str) -> dict:
         return {
-            "summary": _clip(item.summary, 900) or "No finding returned.",
+            "summary": _clip(item.summary, 1500) or "No finding returned.",
             "evidenceIds": [value for value in dict.fromkeys(item.evidence_ids) if value in available][:6],
             "confidence": round(min(max(float(item.confidence), 0.0), 1.0), 2),
             "source": f"AI-GENERATED / {label}",
@@ -283,7 +342,7 @@ class FoundryBrain:
     def work(self, context: dict, step: str, members: list[dict], prior: list[dict]) -> dict[str, dict]:
         available = {record["id"] for record in context.get("evidence", [])}
         base = self._base(context)
-        earlier = [{"role": member["role"], "summary": _clip(member["findings"]["summary"], 300)} for member in prior if member.get("findings")][-8:]
+        earlier = [{"role": member["role"], "confidence": member["findings"].get("confidence", 0), "summary": _clip(member["findings"]["summary"], 600 if member["role"] in {"root-cause", "remediation", "repository"} else 300)} for member in prior if member.get("findings")][-8:]
         findings: dict[str, dict] = {}
         errors: dict[str, str] = {}
 
@@ -291,11 +350,29 @@ class FoundryBrain:
         agent_members = [member for member in members if self.agents.available(member["role"])]
 
         def run_agent(member: dict):
-            payload = {**base, "step": step, "your_role": member["role"], "your_task": _clip(member["task"], 300), "earlier_findings": earlier}
+            payload = {**base, "step": step, "your_role": member["role"], "your_task": _clip(member["task"], 300), "your_deliverable": DELIVERABLE.get(member["role"], DELIVERABLE["default"]), "can_apply_fix_here": bool(context.get("canApplyFix")), "earlier_findings": earlier}
             tools = InvestigationTools(self.store.read(), context["incident"], self.sandbox)
-            answer, label = self._call(f"work:{step}:{member['role']}", WORK_TASK, payload, AgentFinding, context, role=member["role"], tools=tools)
+            code = tools.project.code
+            wants_edits = member["role"] == "remediation" and bool(code.paths())  # the fix as exact, checkable code edits
+            if wants_edits:
+                payload["your_deliverable"] += EDITS_DELIVERABLE
+            schema = FixProposal if wants_edits else AgentFinding
+            answer, label = self._call(f"work:{step}:{member['role']}", WORK_TASK, payload, schema, context, role=member["role"], tools=tools)
+            patch = None
+            if wants_edits:
+                patch = build_patch(code, [edit.model_dump() for edit in answer.edits])
+                if patch["problems"]:
+                    # The edits did not fit the real file: tell the agent exactly why and let it correct them once.
+                    retry = {**payload, "your_edits_were_rejected": patch["problems"], "instruction": "Read the file again and return corrected edits."}
+                    try:
+                        answer, label = self._call(f"work:{step}:{member['role']}:edits", WORK_TASK, retry, schema, context, role=member["role"], tools=tools)
+                        patch = build_patch(code, [edit.model_dump() for edit in answer.edits])
+                    except AIUnavailable as error:
+                        logger.warning("Could not get corrected edits from %s: %s", member["role"], error)
             value = self._clean_finding(answer, available, label)
             value["toolCalls"] = tools.trail
+            if patch and patch["edits"]:
+                value["patch"] = patch
             return member["role"], value
 
         if agent_members:
@@ -347,7 +424,11 @@ class FoundryBrain:
             "max_iterations": MAX_ITERATIONS,
             "team": team_roles,
             "human_decisions": context.get("decisions", []),
-            "findings": [{"role": item["role"], "summary": _clip(item["summary"], 300)} for item in context.get("findings", [])][-14:],
+            "findings": [{"role": item["role"], "confidence": item.get("confidence", 0), "summary": _clip(item["summary"], 700 if item["role"] in {"root-cause", "remediation", "testing", "validation"} else 300)} for item in context.get("findings", [])][-14:],
+            "fix_delivery": "This system applied and measured the fix in the sandbox." if context.get("canApplyFix") else (
+                f"The human-approved change was opened as pull request {context['pullRequest']['url']}. This system cannot merge, deploy, run or measure it: the project's own pipeline and owners do that."
+                if (context.get("pullRequest") or {}).get("status") == "OPENED"
+                else "This system CANNOT apply, deploy, run or measure the fix for this service. The owning team implements the approved solution."),
             "specialists": SPECIALISTS,
         }
         try:
@@ -357,7 +438,25 @@ class FoundryBrain:
             result["source"] = f"SIMULATED fallback: {error}"
             return result
         recommendation = outcome.recommendation
-        if outcome.resolved:
+        # Hard rule, not left to the model: without an established root cause there is no solution, whatever the review says.
+        causes = [item.get("confidence", 0) for item in context.get("findings", []) if item["role"] == "root-cause"]
+        fixes = [item.get("confidence", 0) for item in context.get("findings", []) if item["role"] == "remediation"]
+        unproven = (bool(causes) and max(causes) < MIN_CAUSE_CONFIDENCE) or (bool(fixes) and max(fixes) < MIN_CAUSE_CONFIDENCE)
+        if unproven:
+            outcome.resolved = outcome.solution_ready = False
+            outcome.validation.technical_correctness = False
+            outcome.detail = "The agents could not establish the root cause with enough confidence, so no solution is claimed. " + outcome.detail
+            if recommendation == "resolve":
+                recommendation = "iterate"
+        solution_ready = bool(outcome.solution_ready or outcome.resolved) and not context.get("canApplyFix")
+        fix_approved = any(item.get("gate") == "fix" and item.get("decision") == "approve" for item in context.get("decisions", []))
+        if solution_ready and fix_approved:
+            # Nothing was applied by this system, so it is never called "resolved": the approved solution is handed over.
+            outcome.resolved = False
+            recommendation = "handoff"
+        elif outcome.resolved and not context.get("canApplyFix"):
+            outcome.resolved, solution_ready, recommendation = False, False, "iterate"  # no human-approved fix yet
+        elif outcome.resolved:
             recommendation = "resolve"
         elif recommendation == "resolve":
             recommendation = "iterate"
@@ -371,7 +470,8 @@ class FoundryBrain:
         )
         return {
             "resolved": outcome.resolved,
-            "detail": _clip(f"Final validation [{checks}]. {outcome.detail} {report.summary}", 700),
+            "solutionReady": recommendation == "handoff",
+            "detail": _clip(f"Final validation [{checks}]. {outcome.detail}" + ("" if report.summary.strip() in outcome.detail else f" {report.summary}"), 1100),
             "recommendation": recommendation,
             "missing": [role for role in dict.fromkeys(outcome.missing) if role in SPECIALISTS and role not in team_roles],
             "source": f"AI-GENERATED / {label}",

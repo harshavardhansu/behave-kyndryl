@@ -76,7 +76,7 @@ PLAN = {
 WORK = {"findings": [
     {"role": "logs", "summary": "Timeouts in checkout logs.", "evidence_ids": ["EVD-301", "EVD-999"], "confidence": 1.7},
 ]}
-OUTCOME = {"resolved": False, "detail": "No validation plan yet.", "recommendation": "iterate", "missing": ["validation", "logs"],
+OUTCOME = {"resolved": False, "solution_ready": False, "detail": "No validation plan yet.", "recommendation": "iterate", "missing": ["validation", "logs"],
            "validation": {"technical_correctness": True, "completeness": False, "cross_agent_consistency": True, "security_and_risk_acceptable": True, "human_approval_satisfied": True, "summary": "Validation missing."}}
 
 
@@ -93,7 +93,7 @@ def test_plan_is_validated_and_completed(fake):
     brain, context, _ = brain_and_context(settings())
     plan = brain.plan(context, 1, [], [])
     assert plan["source"].startswith("AI-GENERATED /")
-    assert [item["role"] for item in plan["selected"]] == ["logs", "root-cause", "remediation"]
+    assert [item["role"] for item in plan["selected"]] == ["logs", "root-cause", "remediation", "validation"]
     assert {item["role"] for item in plan["selected"]} | {item["role"] for item in plan["skipped"]} == set(SPECIALISTS)
     assert next(item for item in plan["skipped"] if item["role"] == "security")["reason"] == "No security signal"
 
@@ -174,5 +174,61 @@ def test_outcome_tolerates_invented_missing_roles():
     from backend.foundry_brain import Outcome
 
     report = {"technical_correctness": True, "completeness": False, "cross_agent_consistency": True, "security_and_risk_acceptable": True, "human_approval_satisfied": False, "summary": "s"}
-    outcome = Outcome.model_validate({"resolved": False, "detail": "d", "recommendation": "iterate", "missing": ["testing", "human_approval"], "validation": report})
+    outcome = Outcome.model_validate({"resolved": False, "solution_ready": False, "detail": "d", "recommendation": "iterate", "missing": ["testing", "human_approval"], "validation": report})
     assert outcome.missing == ["testing", "human_approval"]
+
+
+READY = {**OUTCOME, "solution_ready": True, "detail": "Root cause, fix, rollback and test plan are complete and approved."}
+FIX_APPROVED = [{"gate": "root-cause", "decision": "approve", "by": "A"}, {"gate": "fix", "decision": "approve", "by": "B"}]
+
+
+def test_a_complete_approved_solution_is_handed_over_not_escalated(fake):
+    # INC-1042 is not the sandbox: nothing can be applied here, so even on the last iteration the outcome is a hand-over.
+    fake({"Outcome": READY})
+    brain, context, _ = brain_and_context(settings())
+    context.update(findings=[], decisions=FIX_APPROVED)
+    assert context["canApplyFix"] is False
+    outcome = brain.evaluate(context, ["logs"], 3)
+    assert outcome["recommendation"] == "handoff" and outcome["solutionReady"] is True and outcome["resolved"] is False
+
+
+def test_never_resolved_or_handed_over_without_an_approved_fix(fake):
+    fake({"Outcome": {**READY, "resolved": True, "recommendation": "resolve"}})
+    brain, context, _ = brain_and_context(settings())
+    context.update(findings=[], decisions=[{"gate": "root-cause", "decision": "approve", "by": "A"}])
+    outcome = brain.evaluate(context, ["logs"], 1)
+    assert outcome["recommendation"] == "iterate" and outcome["resolved"] is False and outcome["solutionReady"] is False
+
+
+def test_specialists_are_told_what_to_deliver(fake):
+    azure = fake({"StepFindings": WORK})
+    brain, context, _ = brain_and_context(settings())
+    brain.work(context, "remediate", [{"role": "remediation", "name": "Remediation", "task": "t"}], [])
+    assert "ROLLBACK" in foundry_brain.DELIVERABLE["remediation"] and "never that they passed" in foundry_brain.DELIVERABLE["testing"]
+    assert set(foundry_brain.DELIVERABLE) >= set(SPECIALISTS)
+    assert azure.calls
+
+
+def test_an_unproven_root_cause_is_never_a_solution(fake):
+    # The reviewer model says "ready", but the root-cause agent itself was not confident: the hard rule wins.
+    fake({"Outcome": READY})
+    brain, context, _ = brain_and_context(settings())
+    context.update(decisions=FIX_APPROVED, findings=[
+        {"role": "root-cause", "summary": "Cause not identified.", "confidence": 0.2},
+        {"role": "remediation", "summary": "Build a login system.", "confidence": 0.9},
+    ])
+    outcome = brain.evaluate(context, ["root-cause", "remediation"], 1)
+    assert outcome["solutionReady"] is False and outcome["resolved"] is False and outcome["recommendation"] == "iterate"
+    assert outcome["validationReport"]["technical_correctness"] is False
+    assert outcome["detail"].startswith("Final validation [Correctness FAIL") and "could not establish the root cause" in outcome["detail"]
+    assert brain.evaluate(context, ["root-cause", "remediation"], 3)["recommendation"] == "escalate"
+
+
+def test_a_fix_agent_that_declines_also_blocks_the_solution(fake):
+    fake({"Outcome": READY})
+    brain, context, _ = brain_and_context(settings())
+    context.update(decisions=FIX_APPROVED, findings=[
+        {"role": "root-cause", "summary": "Second register view overrides the first.", "confidence": 0.9},
+        {"role": "remediation", "summary": "No fix can be proposed yet.", "confidence": 0.2},
+    ])
+    assert brain.evaluate(context, ["root-cause", "remediation"], 1)["solutionReady"] is False

@@ -1,3 +1,4 @@
+import { IncidentReportButton } from '../components/ReportPreview'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -27,7 +28,6 @@ import {
   Cloud,
   CreditCard,
   Database,
-  Download,
   ExternalLink,
   Flag,
   GitBranch,
@@ -83,7 +83,8 @@ const AgentCommandView = lazy(() =>
 )
 
 /** The dependency map shows production topology; the isolated sandbox service is not part of it. */
-const topologyServices = (services: Service[]) => services.filter((service) => service.environment !== 'Sandbox')
+// Connected projects (projects.json) have no recorded dependencies yet, so they are not drawn on the dependency map.
+const topologyServices = (services: Service[]) => services.filter((service) => service.environment !== 'Sandbox' && !service.connected)
 
 const serviceIcons = {
   Web: AppWindow,
@@ -580,7 +581,7 @@ export function WarRoom() {
 }
 
 function WarRoomWorkspace() {
-  const { data, can, setActionDialog, setEvidenceFor, exportReport } =
+  const { data, can, setActionDialog, setEvidenceFor } =
     useWorkspace()
   const incident = useIncident()
   const navigate = useNavigate()
@@ -668,10 +669,7 @@ function WarRoomWorkspace() {
         description="Incident operations / Evidence-led response"
         actions={
           <>
-            <Button onClick={() => void exportReport('json', incident.id)}>
-              <Download size={15} />
-              Incident report
-            </Button>
+            <IncidentReportButton incidentId={incident.id} />
             <NextActionButton incident={incident} />
           </>
         }

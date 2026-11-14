@@ -1,3 +1,4 @@
+import { IncidentReportButton } from '../components/ReportPreview'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -346,7 +347,6 @@ export function IncidentDetail() {
     selectIncident,
     setEvidenceFor,
     setActionDialog,
-    exportReport,
     can,
     notify,
   } = useWorkspace()
@@ -480,10 +480,7 @@ export function IncidentDetail() {
         description={`${incident.service} / First observed ${dateTime(incident.detectedAt)} / ${incident.owner}`}
         actions={
           <>
-            <Button onClick={() => void exportReport('json', incident.id)}>
-              <Download size={15} />
-              Report
-            </Button>
+            <IncidentReportButton incidentId={incident.id} label="Report" />
             <NextActionButton incident={incident} />
           </>
         }

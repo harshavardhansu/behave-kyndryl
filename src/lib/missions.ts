@@ -48,6 +48,7 @@ export function missionCaption(mission: Mission | undefined) {
         'Awaiting decision': 'Awaiting human decision',
         'Awaiting resolution review': 'Outcome ready for review',
         Resolved: `Resolved · iteration ${mission.iteration}`,
+        'Solution ready': 'Solution approved · handed to the owning team',
         Escalated: 'Escalated to a human',
         Cancelled: 'Mission cancelled',
         Paused: 'Mission paused',
@@ -71,7 +72,7 @@ export function missionTeam(incident: Incident, mission: Mission | undefined, st
             ? 'Running'
             : mission.status.startsWith('Awaiting')
                 ? 'Waiting for Human Approval'
-                : mission.status === 'Resolved'
+                : mission.status === 'Resolved' || mission.status === 'Solution ready'
                     ? 'Completed'
                     : mission.status === 'Escalated'
                         ? 'Failed'

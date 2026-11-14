@@ -1,0 +1,18 @@
+{
+  "projects": [
+    {
+      "service": "employee-portal",
+      "name": "Employee portal",
+      "type": "Web",
+      "environment": "Production",
+      "code": { "type": "github", "repo": "harshavardhansu/Employee-Management-Application" }
+    },
+    {
+      "service": "blog-web-app",
+      "name": "Blog web app",
+      "type": "Web",
+      "environment": "Production",
+      "code": { "type": "github", "repo": "harshavardhansu/blog_web_app" }
+    }
+  ]
+}

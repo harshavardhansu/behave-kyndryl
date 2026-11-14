@@ -160,12 +160,12 @@ def test_agent_failure_or_bad_output_falls_back_with_a_reason(fake_azure):
 
 def test_orchestrator_agent_plans_and_validates(fake_azure):
     plan = {"analysis": "Pool saturation after the release.", "selected": [{"role": "logs", "reason": "EVD-301", "task": "group timeouts"}, {"role": "logs", "reason": "dup", "task": "dup"}], "skipped": [{"role": "security", "reason": "no signal"}]}
-    outcome = {"resolved": False, "detail": "No validation yet.", "recommendation": "resolve", "missing": ["validation", "logs"],
+    outcome = {"resolved": False, "solution_ready": False, "detail": "No validation yet.", "recommendation": "resolve", "missing": ["validation", "logs"],
                "validation": {"technical_correctness": True, "completeness": False, "cross_agent_consistency": True, "security_and_risk_acceptable": True, "human_approval_satisfied": True, "summary": "Needs validation."}}
     brain, project, context, _ = brain_with_agents(fake_azure, {"behave-orchestrator": plan})
     result = brain.plan(context, 1, [], [])
     assert result["source"] == "AI-GENERATED / Foundry agent behave-orchestrator v1"
-    assert [item["role"] for item in result["selected"]] == ["logs"]
+    assert [item["role"] for item in result["selected"]] == ["logs", "root-cause", "remediation", "validation"]  # the core roles are always added
     project.answers["behave-orchestrator"] = outcome
     context["findings"], context["decisions"] = [], []
     evaluated = brain.evaluate(context, ["logs"], 3)

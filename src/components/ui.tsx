@@ -346,6 +346,7 @@ export function Modal({
   description,
   children,
   wide = false,
+  className,
 }: {
   open: boolean
   onClose: () => void
@@ -353,13 +354,14 @@ export function Modal({
   description?: string
   children: ReactNode
   wide?: boolean
+  className?: string
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={(value) => !value && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content
-          className={clsx('modal', wide && 'modal-wide')}
+          className={clsx('modal', wide && 'modal-wide', className)}
           onOpenAutoFocus={(event) => {
             if (!open) event.preventDefault()
           }}

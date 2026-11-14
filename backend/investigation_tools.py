@@ -8,7 +8,8 @@ what the person attached to this one incident:
 - the service's log files (search, then read a window of lines), the live Payment API sandbox log and log evidence,
 - metrics found in the evidence and the service status,
 - the changes and deployments recorded for the service,
-- the service's repository: ``payment_api/`` for the sandbox, ``sample_services/<service>/repo`` for the demo services,
+- the service's repository and recent commits, through whichever connector the project uses
+  (a local folder or any GitHub repository: see ``connectors.py``),
 - approved runbooks in the knowledge base.
 
 Nothing here can change, run, deploy or delete anything. Results are size-capped
@@ -21,14 +22,13 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
+from .connectors import Projects
 from .domain import redact
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-REPO_ROOT = PROJECT_ROOT / "payment_api"            # the live Payment API sandbox source
-SAMPLE_ROOT = PROJECT_ROOT / "sample_services"      # demo repos and logs: scripts/generate_sample_services.py
-READABLE_SUFFIXES = {".py", ".txt", ".md", ".example", ".yml", ".yaml", ".java", ".kt", ".properties", ".options", ".json", ".toml", ".sql"}
 ARGUMENTS = {"id", "query", "path", "file", "start_line", "lines", "level"}
 MAX_LOG_LINES = 40
+MAX_LISTED_FILES = 80
+FILE_WINDOW_CHARS = 3000
 LOG_WINDOW_CHARS = 5000
 MAX_CALLS = 10          # per agent run
 MAX_RESULT_CHARS = 6000  # per tool result sent back to the agent
@@ -51,9 +51,9 @@ TOOL_SPECS: list[dict] = [
     {"name": "list_log_files", "description": "List the log files available for the affected service, with line counts and the time range they cover.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "read_log", "description": "Read a window of lines from one log file (up to 40 lines). Without start_line it returns the last lines. Use search_logs first to find the line numbers that matter.", "parameters": {"type": "object", "properties": {"file": {"type": "string", "description": "Name from list_log_files"}, "start_line": {"type": "integer", "description": "1-based line number to start at"}, "lines": {"type": "integer", "description": "How many lines (max 40)"}}, "required": ["file"], "additionalProperties": False}},
     {"name": "get_service_status", "description": "Read the current state of the affected service: recorded health, metric evidence and, for the Payment API sandbox, the live active configuration.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
-    {"name": "list_changes", "description": "List changes and deployments recorded for the affected service (release, config change, risk, status).", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
-    {"name": "list_repo_files", "description": "List the source and configuration files of the affected service's repository.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
-    {"name": "read_repo_file", "description": "Read one file of the affected service's repository (read-only), e.g. a config file with connection pool settings.", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path exactly as shown by list_repo_files"}}, "required": ["path"], "additionalProperties": False}},
+    {"name": "list_changes", "description": "List changes and deployments recorded for the affected service (release, config change, risk, status) and the latest commits of its repository (id, message, time, files touched).", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
+    {"name": "list_repo_files", "description": "List the source and configuration files of the affected service's repository. For a large repository give a folder in 'path' to list only that folder.", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Optional folder, e.g. 'src/api'"}}, "additionalProperties": False}},
+    {"name": "read_repo_file", "description": "Read one file of the affected service's repository (read-only), e.g. a config file with connection pool settings. A long file is returned in parts: continue with start_line.", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Path exactly as shown by list_repo_files"}, "start_line": {"type": "integer", "description": "Optional 1-based line to start at"}, "lines": {"type": "integer", "description": "Optional number of lines to return"}}, "required": ["path"], "additionalProperties": False}},
     {"name": "search_repo", "description": "Search all repository files for a word or phrase; returns file:line matches.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"], "additionalProperties": False}},
     {"name": "search_knowledge", "description": "Search approved runbooks and past resolutions for a word or phrase.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"], "additionalProperties": False}},
 ]
@@ -63,10 +63,11 @@ TOOL_NAMES = {spec["name"] for spec in TOOL_SPECS}
 class InvestigationTools:
     """The tools for ONE incident. ``trail`` records every call that was made."""
 
-    def __init__(self, state: dict, incident: dict, sandbox: Any = None):
+    def __init__(self, state: dict, incident: dict, sandbox: Any = None, projects: Projects | None = None):
         self.state = state
         self.incident = incident
         self.sandbox = sandbox
+        self.project = (projects or Projects.load()).resolve(incident, sandbox)  # the connectors for this service
         self.trail: list[dict] = []
         self._handlers: dict[str, Callable[..., Any]] = {
             "get_ticket": self.get_ticket, "list_evidence": self.list_evidence, "read_evidence": self.read_evidence,
@@ -149,21 +150,12 @@ class InvestigationTools:
 
     # -- logs ----------------------------------------------------------
 
-    def _log_files(self) -> dict[str, Path]:
-        """Log files the agent may read for this incident's service (name -> path)."""
-        files: dict[str, Path] = {}
-        if _is_payment_sandbox(self.incident):
-            log_path = getattr(self.sandbox, "log_path", None)
-            if log_path is not None and Path(log_path).is_file():
-                files["payment-sandbox.log (live)"] = Path(log_path)
-        folder = SAMPLE_ROOT / str(self.incident.get("service", "")) / "logs"
-        if folder.is_dir() and folder.resolve().is_relative_to(SAMPLE_ROOT.resolve()):
-            files.update({p.name: p for p in sorted(folder.glob("*.log")) if p.is_file()})
-        return files
+    def _log_names(self) -> list[str]:
+        """Log files the agent may read for this incident's service."""
+        return self.project.logs.names()
 
-    @staticmethod
-    def _lines(path: Path) -> list[str]:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()[-20000:]
+    def _lines(self, name: str) -> list[str]:
+        return self.project.logs.lines(name) or []
 
     @staticmethod
     def _time(line: str) -> str:
@@ -172,19 +164,19 @@ class InvestigationTools:
 
     def list_log_files(self) -> dict:
         logs = []
-        for name, path in self._log_files().items():
-            lines = self._lines(path)
+        for name in self._log_names():
+            lines = self._lines(name)
             logs.append({"file": name, "lines": len(lines), "from": self._time(lines[0]) if lines else "", "to": self._time(lines[-1]) if lines else ""})
         if not logs:
             return {"logs": [], "note": "No log files are connected for this service; use search_logs on the attached evidence."}
         return {"logs": logs}
 
     def read_log(self, file: str = "", start_line: Any = None, lines: Any = 60) -> dict:
-        files = self._log_files()
-        path = files.get(file) or next((p for name, p in files.items() if name.split(" ")[0] == Path(str(file)).name), None)
-        if path is None:
+        names = self._log_names()
+        name = file if file in names else next((n for n in names if n.split(" ")[0] == Path(str(file)).name), None)
+        if name is None:
             return {"error": f"Log file {file!r} is not available. Use list_log_files."}
-        content = self._lines(path)
+        content = self._lines(name)
         count = max(1, min(int(lines or 60), MAX_LOG_LINES))
         start = int(start_line) if start_line not in (None, "") else max(1, len(content) - count + 1)
         start = min(max(1, start), max(1, len(content)))
@@ -209,8 +201,8 @@ class InvestigationTools:
             for line in str(record.get("excerpt", "")).splitlines():
                 if needle in line.lower() and (not level or level in line.upper()):
                     matches.append({"source": record["id"], "time": self._time(line), "line": _clip(line.strip(), 240)})
-        for name, path in self._log_files().items():
-            for number, line in enumerate(self._lines(path), start=1):
+        for name in self._log_names():
+            for number, line in enumerate(self._lines(name), start=1):
                 if needle in line.lower() and (not level or level in line[:60].upper() or f'"severity": "{level}"' in line):
                     matches.append({"source": f"{name.split(' ')[0]}:{number}", "time": self._time(line), "line": _clip(line.strip(), 240)})
         times = sorted(m["time"] for m in matches if m["time"])
@@ -238,54 +230,76 @@ class InvestigationTools:
         deployments = [d for d in self.state.get("deployments", []) if d.get("service") == service]
         rows = [{"kind": "change", **{k: _clip(c[k], 160) for k in ("id", "title", "risk", "status") if k in c}} for c in changes]
         rows += [{"kind": "deployment", **{k: _clip(d[k], 160) for k in ("id", "release", "version", "status", "timestamp") if k in d}} for d in deployments]
-        return {"changes": rows[:10]}
+        rows = rows[:10]
+        for commit in self.project.code.commits()[:8]:
+            row = {"kind": "commit", **{k: _clip(commit[k], 160) for k in ("id", "title", "author", "timestamp") if commit.get(k)}}
+            if commit.get("files"):
+                row["files"] = [_clip(name, 100) for name in commit["files"][:12]]
+            rows.append(row)
+        return {"changes": rows}
 
     # -- repository ----------------------------------------------------
 
-    def _repo_root(self) -> Path | None:
-        if _is_payment_sandbox(self.incident):
-            return REPO_ROOT if REPO_ROOT.is_dir() else None
-        root = SAMPLE_ROOT / str(self.incident.get("service", "")) / "repo"
-        if root.is_dir() and root.resolve().is_relative_to(SAMPLE_ROOT.resolve()):
-            return root
-        return None
+    def _no_repo(self) -> str:
+        return self.project.code.problem or "No source repository is connected for this service."
 
-    def _repo_files(self) -> dict[str, Path]:
-        root = self._repo_root()
-        if root is None:
-            return {}
-        files = {}
-        for path in sorted(root.rglob("*")):
-            relative = path.relative_to(root)
-            if path.is_file() and path.suffix in READABLE_SUFFIXES and not any(part.startswith((".", "__")) for part in relative.parts):
-                files[relative.as_posix()] = path
-        return files
-
-    def list_repo_files(self) -> dict:
-        files = self._repo_files()
+    def list_repo_files(self, path: str = "") -> dict:
+        code = self.project.code
+        files = code.paths()
         if not files:
-            return {"files": [], "note": "No source repository is connected for this service."}
-        return {"files": list(files)[:60]}
+            return {"files": [], "note": self._no_repo()}
+        folder = str(path or "").strip().strip("./")
+        shown = [name for name in files if name.startswith(folder + "/") or name == folder] if folder else files
+        if folder and not shown:
+            tops = sorted({name.split("/")[0] for name in files})
+            return {"source": code.label, "total": len(files), "files": files[:MAX_LISTED_FILES], "note": f"There is no folder {folder!r} in this repository, so all files are listed. Top level: {', '.join(tops[:20])}"}
+        result: dict[str, Any] = {"source": code.label, "total": len(shown), "files": shown[:MAX_LISTED_FILES]}
+        if len(shown) > MAX_LISTED_FILES:
+            folders = sorted({name[len(folder) + 1 if folder else 0:].split("/")[0] for name in shown if "/" in name[len(folder) + 1 if folder else 0:]})
+            result["note"] = f"Showing {MAX_LISTED_FILES} of {len(shown)} files. List one folder with 'path', or use search_repo. Folders: {', '.join(folders[:30])}"
+        return result
 
-    def read_repo_file(self, path: str = "") -> dict:
-        files = self._repo_files()
+    def read_repo_file(self, path: str = "", start_line: Any = None, lines: Any = None) -> dict:
+        code = self.project.code
+        files = code.paths()
         wanted = str(path).strip().lstrip("./")
-        match = files.get(wanted) or next((p for name, p in files.items() if name.rsplit("/", 1)[-1] == wanted), None)
-        if match is None:
-            return {"error": f"File {path!r} is not available. Use list_repo_files."}
-        name = next(name for name, p in files.items() if p == match)
-        return {"path": name, "text": _clip(match.read_text(encoding="utf-8", errors="replace"), 3000)}
+        name = wanted if wanted in files else next((item for item in files if item.rsplit("/", 1)[-1] == wanted), None)
+        text = code.read(name) if name else None
+        if text is None:
+            return {"error": f"File {path!r} is not available. Use list_repo_files." if files else self._no_repo()}
+        if len(text) <= FILE_WINDOW_CHARS:
+            # A file that fits is always returned whole, whatever window was asked for: an agent that
+            # reads only the first lines draws wrong conclusions (e.g. misses a second definition further down).
+            return {"path": name, "totalLines": len(text.splitlines()), "complete": True, "text": text}
+        content = text.splitlines()
+        start = min(max(1, int(start_line or 1)), max(1, len(content)))
+        limit = max(1, int(lines)) if lines not in (None, "") else len(content)
+        window, used = [], 0
+        for line in content[start - 1:start - 1 + limit]:
+            if window and used + len(line) + 1 > FILE_WINDOW_CHARS:
+                break
+            window.append(_clip(line, FILE_WINDOW_CHARS))
+            used += len(line) + 1
+        last = start + len(window) - 1
+        result = {"path": name, "from": start, "to": last, "totalLines": len(content), "complete": start == 1 and last >= len(content), "text": "\n".join(window)}
+        if last < len(content):
+            result["note"] = f"INCOMPLETE: you have seen lines {start}-{last} of {len(content)}. Call read_repo_file again with start_line={last + 1} before concluding anything about this file."
+        return result
 
     def search_repo(self, query: str = "") -> dict:
         needle = str(query).strip().lower()
         if len(needle) < 2:
             return {"error": "Give a search word of at least 2 characters."}
+        code = self.project.code
         matches = []
-        for name, path in self._repo_files().items():
-            for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+        for name in code.paths():
+            for number, line in enumerate((code.read(name) or "").splitlines(), start=1):
                 if needle in line.lower():
                     matches.append({"file": f"{name}:{number}", "line": _clip(line.strip(), 200)})
-        return {"query": query, "matches": matches[:15]}
+        result: dict[str, Any] = {"query": query, "total": len(matches), "matches": matches[:15]}
+        if not matches and not code.paths():
+            result["note"] = self._no_repo()
+        return result
 
     def search_knowledge(self, query: str = "") -> dict:
         words = [w for w in re.split(r"\W+", query.lower()) if len(w) > 2]

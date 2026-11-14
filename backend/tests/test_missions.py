@@ -173,3 +173,41 @@ def test_workspace_publishes_the_mission_squads_in_order(client):
     steps = client.get("/api/v1/workspace").json()["missionSteps"]
     assert [step["id"] for step in steps] == ["investigate", "diagnose", "remediate", "govern"]
     assert sorted(role for step in steps for role in step["roles"]) == sorted(SPECIALISTS)  # every specialist belongs to one squad
+
+
+def test_an_approved_solution_can_be_handed_over(client):
+    """A fix this system cannot apply ends as "Solution ready": not falsely resolved, not escalated."""
+    login(client)
+    mission_id = run_to_fix_gate(client)
+    login(client, "Change Approver")
+    assert decide(client, mission_id, "approve").status_code == 200
+    login(client)
+    assert mission(client, mission_id)["pendingGate"]["type"] == "resolution"
+    assert decide(client, mission_id, "handoff", note="Owning team will implement").status_code == 200
+    record = mission(client, mission_id)
+    assert record["status"] == "Solution ready" and record["pendingGate"] is None
+    assert record["handoff"]["note"] == "Owning team will implement" and not record.get("resolution")
+    workspace = client.get("/api/v1/workspace").json()
+    incident = next(item for item in workspace["incidents"] if item["id"] == "INC-1042")
+    assert incident["status"] != "Resolved" and incident["workflowStatus"] == "Completed"
+    report = client.get("/api/v1/incidents/INC-1042/resolution-report/pdf")
+    assert report.status_code == 200 and report.content.startswith(b"%PDF")
+    assert start(client)  # a new mission can be started afterwards
+
+
+def test_a_low_confidence_root_cause_is_flagged_for_rejection(client):
+    """The gate must not present a guess as a diagnosis."""
+    class UnsureBrain(SimulatedBrain):
+        def work(self, context, step, members, prior):
+            findings = super().work(context, step, members, prior)
+            if "root-cause" in findings:
+                findings["root-cause"].update(summary="The cause could not be identified.", confidence=0.2)
+            return findings
+
+    client.app.state.mission_brain = UnsureBrain()
+    login(client)
+    mission_id = start(client)
+    assert decide(client, mission_id, "approve").status_code == 200
+    gate = mission(client, mission_id)["pendingGate"]
+    assert gate["type"] == "root-cause" and gate["title"].startswith("Root cause not established")
+    assert gate["detail"].startswith("LOW CONFIDENCE (0.20)") and gate["recommendation"].startswith("Reject")
