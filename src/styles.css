@@ -7458,3 +7458,19 @@ button.metric:hover {
 @media (max-width: 900px) {
     .error-breakdowns { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Repository picker (new task, GitHub) */
+.repo-picker { display: grid; gap: 10px; }
+.repo-picker-search { display: flex; gap: 8px; }
+.repo-picker-search input { flex: 1; min-width: 0; }
+.repo-picker-list { display: grid; gap: 4px; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px; background: #fff; }
+.repo-picker-row { display: grid; gap: 2px; text-align: left; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font: inherit; color: inherit; }
+.repo-picker-row:hover { background: #f1f5f9; }
+.repo-picker-row:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+.repo-picker-row.is-selected { background: #eff6ff; box-shadow: inset 0 0 0 1px #2563eb; }
+.repo-picker-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.repo-picker-meta { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-picker-empty, .repo-picker-error { font-size: 12px; margin: 6px 8px; color: var(--muted); }
+.repo-picker-error { color: #b91c1c; margin: 0; }
+.repo-picker-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; margin: 0; color: var(--muted); }
+.repo-picker-summary code { font-size: 11.5px; }

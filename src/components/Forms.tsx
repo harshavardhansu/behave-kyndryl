@@ -21,6 +21,7 @@ import { post, request } from '../lib/api'
 import { environments, errorMessage, severities } from '../lib/format'
 import type { Incident, IncidentInput, TaskReadiness } from '../types'
 import { actionPermissions, GateList } from './incident'
+import { RepositoryPicker } from './RepositoryPicker'
 import { Badge, Button, Modal, Notice, Select, Tabs } from './ui'
 
 const NEW_SERVICE = '__new__'
@@ -197,7 +198,7 @@ function CreateIncidentDialog() {
       } else {
         const service = form.service === NEW_SERVICE ? newService.trim() : form.service
         if (!service) throw new Error('Give the application or service a name.')
-        if (method === 'github' && !/^[\w.-]+\/[\w.-]+$/.test(repository.repo.trim())) throw new Error('Give the repository as owner/name, for example acme/shop-api.')
+        if (method === 'github' && !/^[\w.-]+\/[\w.-]+$/.test(repository.repo.trim())) throw new Error('Find and choose a repository first.')
         const result = await post<Incident>('/incidents', {
           ...form,
           service,
@@ -335,7 +336,7 @@ function CreateIncidentDialog() {
                     value={form.service}
                     onChange={(event) => update('service', event.target.value)}
                   >
-                    {data.services.map((service) => (
+                    {data.services.filter((service) => service.id !== 'payment-api').map((service) => (
                       <option key={service.id} value={service.id}>
                         {service.name}
                       </option>
@@ -378,23 +379,13 @@ function CreateIncidentDialog() {
               </label>
               {method === 'github' && (
                 <div className="field-group">
-                  <div className="form-grid three">
-                    <label className="field-label">
-                      Repository <span className="field-required">Required</span>
-                      <input required placeholder="owner/name" maxLength={140} value={repository.repo} onChange={(event) => setRepository((current) => ({ ...current, repo: event.target.value }))} />
-                    </label>
-                    <label className="field-label">
-                      Branch, tag or commit
-                      <input placeholder="default branch" maxLength={200} value={repository.ref} onChange={(event) => setRepository((current) => ({ ...current, ref: event.target.value }))} />
-                    </label>
-                    <label className="field-label">
-                      Project folder
-                      <input placeholder="whole repository" maxLength={300} value={repository.path} onChange={(event) => setRepository((current) => ({ ...current, path: event.target.value }))} />
-                    </label>
-                  </div>
-                  <span className="field-hint">
-                    The repository is read only. A public repository needs nothing else; a private one must be connected by an administrator first. Nothing is ever pushed to its default branch.
-                  </span>
+                  <label className="field-label">
+                    GitHub repository <span className="field-required">Required</span>
+                    <span className="field-hint">
+                      Connected repositories are listed first. Find any public repository by its owner. Read-only: nothing is ever pushed to its default branch.
+                    </span>
+                  </label>
+                  <RepositoryPicker value={repository} onChange={setRepository} />
                 </div>
               )}
               {(method === 'file' || method === 'zip') && (

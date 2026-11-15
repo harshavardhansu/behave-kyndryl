@@ -280,7 +280,7 @@ test('search, table filters, export and explicit integration errors work', async
   await page.getByRole('dialog').getByLabel('Repository URL').fill('https://example.invalid/authorized-repo')
   await page.getByRole('dialog').getByRole('checkbox', { name: /I am authorized/ }).check()
   await page.getByRole('dialog').getByRole('button', { name: 'Analyse project', exact: true }).click()
-  await expect(page.getByRole('dialog')).toContainText('Repository adapter not configured')
+  await expect(page.getByRole('dialog')).toContainText('Give a GitHub repository as owner/name')  // not GitHub: refused, nothing fetched
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
   await navigate(page, '/reports')
   const downloadPromise = page.waitForEvent('download')

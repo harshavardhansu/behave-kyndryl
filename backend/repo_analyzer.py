@@ -4,7 +4,7 @@ Evaluates architecture, security, CI/CD workflow, and reliability across reposit
 
 import re
 from typing import Any
-from .domain import now
+from .domain import now, redact
 
 
 def analyze_github_file(
@@ -24,12 +24,14 @@ def analyze_github_file(
     if "security" in active_scope:
         # Check for hardcoded credentials / tokens
         secret_patterns = [
-            (r"(?i)(api[_-]?key|secret|token|password|auth)\s*[=:]\s*['\"][A-Za-z0-9_\-\.]{10,}['\"]", "Hardcoded credential or token detected", "Critical", "Secrets in repository files can be leaked into build artifacts and version control."),
+            (r"(?i)\b\w*(api[_-]?key|secret|token|password|passwd|auth)\w*\s*[=:]\s*['\"][^'\"\s]{10,}['\"]", "Hardcoded credential or token detected", "Critical", "Secrets in repository files can be leaked into build artifacts and version control."),
             (r"(?i)bearer\s+[A-Za-z0-9_\-\.]{20,}", "Hardcoded bearer token", "Critical", "Raw authorization tokens must never be committed to source files."),
             (r"(?i)private[_-]?key", "Private key reference in repository file", "High", "Ensure private keys are fetched securely from an enterprise vault at runtime."),
             (r"https?://[^/@\s]+:[^/@\s]+@", "Basic auth credentials embedded in URL", "High", "Embedding usernames and passwords in URLs exposes secrets in logs and traces."),
             (r"(?i)chmod\s+(-R\s+)?777", "Overly permissive file permissions (chmod 777)", "High", "Unrestricted permissions violate the principle of least privilege."),
-            (r"(?i)(curl|wget).*(?:-k|--insecure|verify\s*=\s*False)", "Disabled TLS/SSL certificate verification", "Medium", "Disabling certificate validation opens connections to man-in-the-middle attacks.")
+            (r"(?i)(curl|wget).*(?:-k|--insecure|verify\s*=\s*False)", "Disabled TLS/SSL certificate verification", "Medium", "Disabling certificate validation opens connections to man-in-the-middle attacks."),
+            (r"^\s*DEBUG\s*=\s*True\b", "Debug mode switched on in settings", "Medium", "Debug mode shows stack traces, settings and SQL to any visitor when it reaches production."),
+            (r"^\s*ALLOWED_HOSTS\s*=\s*\[\s*['\"]\*['\"]\s*\]", "Any host name accepted (ALLOWED_HOSTS = ['*'])", "Medium", "Accepting every Host header enables host-header attacks and cache poisoning.")
         ]
         for idx, line in enumerate(lines, 1):
             for pattern, title, severity, impact in secret_patterns:
@@ -186,8 +188,8 @@ def analyze_github_file(
                     "codeSnippet": "  int attempts = 0;\n+ while (attempts++ < MAX_RETRIES) {\n+     Thread.sleep(backoff);\n  }"
                 })
 
-    # If no severe issues found, add positive best practice findings
-    if not findings:
+    # If no severe issues found, add positive best practice findings (single-file view only; a repository scan drops it)
+    if not findings and not getattr(analyze_github_file, "_quiet", False):
         findings.append({
             "id": "ARC-OK",
             "category": "Architecture",
@@ -277,254 +279,45 @@ Deep static and architectural analysis of `{filename}` ({line_count} lines) iden
     }
 
 
-def generate_repository_findings(
-    repo_url: str,
-    stack: str,
-    scope: list[str],
-    branch: str = "main",
-    commit: str = "c7f4e21",
-) -> list[dict]:
-    """Generate comprehensive 14-Agent intelligence findings for a repository scan
-    filtered by the requested scope and customized for the project stack.
+CATEGORY_TO_SCOPE = {"Security": "Security", "Workflow": "Configuration", "Architecture": "Code paths", "Reliability": "Code paths"}
+SCOPE_TO_RULES = {"Security": "security", "Configuration": "workflow", "Code paths": "architecture", "Dependencies": "reliability", "Tests": "reliability"}
+MAX_SCANNED_FILES = 150
+
+
+def _mask(line: str) -> str:
+    """Hide what a secret rule matched: quoted values, values after '=' or ':' on credential-like keys, and URL passwords."""
+    line = redact(line)
+    line = re.sub(r"(?i)((?:api[_-]?key|secret|token|password|passwd|pwd|auth|bearer|private[_-]?key)\w*\s*[=:]\s*)(['\"]?)[^'\"\s,;]+\2", r"\1\2***\2", line)
+    line = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/-]{8,}=*", r"\1***", line)
+    return re.sub(r"(https?://[^/@\s:]+:)[^/@\s]+@", r"\1***@", line)
+
+
+def scan_repository(code: Any, scope: list[str]) -> tuple[list[dict], int]:
+    """Run the static rules over the REAL files of a repository (read through a connector).
+
+    Returns (findings, files scanned). Nothing is executed and no AI model is used: every finding names
+    the file and line the rule matched, so a person can check it.
     """
-    clean_url = repo_url.strip().rstrip("/")
-    repo_slug = clean_url.split("/")[-1] if "/" in clean_url else "repo"
-
-    # Stack-specific blueprints
-    stack_catalog: dict[str, dict[str, dict[str, Any]]] = {
-        "Java / Spring Boot": {
-            "Configuration": {
-                "title": "HikariCP connection pool budget undersized for peak concurrency",
-                "severity": "High",
-                "file": "src/main/resources/application.yml",
-                "line": 18,
-                "confidence": 0.94,
-                "evidence": ["EVD-CFG-101"],
-                "guidance": "Increase spring.datasource.hikari.maximum-pool-size from 5 to 25 and tune connectionTimeout to 10000ms to avoid thread starvation under load.",
-                "validation": "Replay 50 concurrent checkout transactions in staging; verify connection acquisition latency remains under 20ms.",
-            },
-            "Code paths": {
-                "title": "Database connection timeout propagated as generic HTTP 503",
-                "severity": "Medium",
-                "file": "src/main/java/com/service/CheckoutService.java",
-                "line": 84,
-                "confidence": 0.88,
-                "evidence": ["EVD-COD-102"],
-                "guidance": "Distinguish connection pool timeouts from upstream gateway errors; retain correlation IDs and return structured problem details (RFC-7807).",
-                "validation": "Execute error-path contract tests and verify telemetry spans preserve causation across service boundaries.",
-            },
-            "Dependencies": {
-                "title": "Vulnerable transitive netty-codec package in build classpath",
-                "severity": "High",
-                "file": "pom.xml",
-                "line": 42,
-                "confidence": 0.96,
-                "evidence": ["EVD-DEP-103"],
-                "guidance": "Upgrade io.netty:netty-codec to version 4.1.108.Final or higher to patch HTTP/2 stream frame memory leak vulnerability.",
-                "validation": "Run mvn dependency:tree and verify zero High/Critical vulnerabilities in dependency audit.",
-            },
-            "Tests": {
-                "title": "Concurrency regression coverage gap under thread pool saturation",
-                "severity": "Medium",
-                "file": "src/test/java/com/service/CheckoutServiceTest.java",
-                "line": 24,
-                "confidence": 0.86,
-                "evidence": ["EVD-TST-104"],
-                "guidance": "Add bounded concurrent checkout regression tests with explicit connection-budget assertions and latch synchronization.",
-                "validation": "Required regression checks pass in CI with 30 concurrent threads without pool timeouts.",
-            },
-            "Security": {
-                "title": "Insecure JWT secret fallback configured without key rotation",
-                "severity": "High",
-                "file": "src/main/resources/application.yml",
-                "line": 36,
-                "confidence": 0.97,
-                "evidence": ["EVD-SEC-105"],
-                "guidance": "Enforce secrets retrieval from Azure Key Vault or enterprise KMS; add startup assertion rejecting hardcoded fallback defaults.",
-                "validation": "Verify service startup fails gracefully in staging if environment secrets are omitted.",
-            },
-        },
-        "Python": {
-            "Configuration": {
-                "title": "Uvicorn worker keepalive timeout shorter than upstream ingress proxy",
-                "severity": "High",
-                "file": "config/gunicorn.conf.py",
-                "line": 14,
-                "confidence": 0.92,
-                "evidence": ["EVD-CFG-201"],
-                "guidance": "Set worker keepalive to 65s (exceeding ingress timeout 60s) to prevent unexpected 502 connection resets.",
-                "validation": "Synthetic ingress probe verifies 0 intermittent TCP reset errors over 1,000 sustained requests.",
-            },
-            "Code paths": {
-                "title": "Asyncio unhandled task exception silencing in background loop",
-                "severity": "Medium",
-                "file": "app/services/tasks.py",
-                "line": 52,
-                "confidence": 0.89,
-                "evidence": ["EVD-COD-202"],
-                "guidance": "Migrate background tasks to asyncio.TaskGroup or register done callbacks to capture unhandled exceptions.",
-                "validation": "Unit test simulating task crash confirms error is recorded in telemetry and alert pipeline triggers.",
-            },
-            "Dependencies": {
-                "title": "Outdated cryptography package with known ASN.1 memory flaw",
-                "severity": "High",
-                "file": "requirements.txt",
-                "line": 15,
-                "confidence": 0.95,
-                "evidence": ["EVD-DEP-203"],
-                "guidance": "Pin cryptography>=42.0.5 to address memory corruption vulnerability in ASN.1 parser.",
-                "validation": "Execute pip-audit and verify zero reported CVEs across all pinned virtualenv packages.",
-            },
-            "Tests": {
-                "title": "Database integration tests lack transaction savepoint isolation",
-                "severity": "Medium",
-                "file": "tests/conftest.py",
-                "line": 30,
-                "confidence": 0.85,
-                "evidence": ["EVD-TST-204"],
-                "guidance": "Wrap test database sessions in transactional rollback fixtures to eliminate cross-test data pollution.",
-                "validation": "Run pytest -n auto in parallel mode and confirm 100% deterministic test execution.",
-            },
-            "Security": {
-                "title": "Permissive CORS allow_origins with credentials flag enabled",
-                "severity": "High",
-                "file": "app/main.py",
-                "line": 28,
-                "confidence": 0.97,
-                "evidence": ["EVD-SEC-205"],
-                "guidance": "Replace wildcard origins with explicit trusted domain allowlist when allow_credentials=True.",
-                "validation": "Security suite asserts unauthorized Origin header receives HTTP 400/403 with no CORS headers.",
-            },
-        },
-        "Node.js / TypeScript": {
-            "Configuration": {
-                "title": "Missing SIGTERM graceful pool shutdown and in-flight request draining",
-                "severity": "High",
-                "file": "src/server.ts",
-                "line": 42,
-                "confidence": 0.93,
-                "evidence": ["EVD-CFG-301"],
-                "guidance": "Implement process.on('SIGTERM') handler to stop receiving new HTTP connections and drain DB connection pool before exit.",
-                "validation": "Send SIGTERM to staging container during checkout flow and assert 0 dropped in-flight requests.",
-            },
-            "Code paths": {
-                "title": "Unhandled promise rejection in async Express route middleware",
-                "severity": "Medium",
-                "file": "src/middleware/errorHandler.ts",
-                "line": 26,
-                "confidence": 0.88,
-                "evidence": ["EVD-COD-302"],
-                "guidance": "Adopt express-async-errors or wrap asynchronous route handlers to ensure rejected promises are caught.",
-                "validation": "Automated route test verifies rejected promise produces standard JSON error response instead of crashing process.",
-            },
-            "Dependencies": {
-                "title": "Axios vulnerability in follow-redirects SSRF mitigation",
-                "severity": "High",
-                "file": "package.json",
-                "line": 34,
-                "confidence": 0.94,
-                "evidence": ["EVD-DEP-303"],
-                "guidance": "Upgrade axios to 1.7.4 or later and restrict redirect protocols to HTTPS only.",
-                "validation": "Run npm audit --audit-level=high and confirm clean dependency tree.",
-            },
-            "Tests": {
-                "title": "Jest asynchronous timers lack teardown hook causing test worker leaks",
-                "severity": "Medium",
-                "file": "tests/checkout.spec.ts",
-                "line": 18,
-                "confidence": 0.84,
-                "evidence": ["EVD-TST-304"],
-                "guidance": "Add jest.useRealTimers() and client disconnection in afterEach hooks.",
-                "validation": "Run jest --detectOpenHandles and confirm clean zero-leak process termination.",
-            },
-            "Security": {
-                "title": "Session cookies missing Secure and HttpOnly defense flags",
-                "severity": "High",
-                "file": "src/auth/session.ts",
-                "line": 50,
-                "confidence": 0.96,
-                "evidence": ["EVD-SEC-305"],
-                "guidance": "Set cookie: { secure: true, httpOnly: true, sameSite: 'lax' } on cookie session configuration.",
-                "validation": "Verify browser cannot access session cookie via document.cookie in security regression test.",
-            },
-        },
-    }
-
-    # Fallback template for any other stack
-    default_catalog: dict[str, dict[str, Any]] = {
-        "Configuration": {
-            "title": f"Service configuration parameters lack staging-to-production parity ({stack})",
-            "severity": "High",
-            "file": "config/production.env",
-            "line": 12,
-            "confidence": 0.91,
-            "evidence": ["EVD-CFG-001"],
-            "guidance": f"Ensure connection pools, timeouts, and memory limits for {stack} are explicitly parameterized via environment variables.",
-            "validation": "Compare staging configuration diff against production baseline and verify parameter parity.",
-        },
-        "Code paths": {
-            "title": "Unhandled upstream service timeout propagates without circuit breaker fallback",
-            "severity": "Medium",
-            "file": f"src/client/{repo_slug}_client.ext",
-            "line": 64,
-            "confidence": 0.87,
-            "evidence": ["EVD-COD-002"],
-            "guidance": "Introduce circuit breaker pattern with exponential backoff and localized fallback cache.",
-            "validation": "Simulate upstream network delay of 5000ms; verify circuit opens within 3 failures.",
-        },
-        "Dependencies": {
-            "title": "Indirect runtime dependencies have unpinned upper version bounds",
-            "severity": "Medium",
-            "file": "dependencies.lock",
-            "line": 28,
-            "confidence": 0.92,
-            "evidence": ["EVD-DEP-003"],
-            "guidance": "Generate and commit strict lockfile to prevent non-deterministic builds across CI runners.",
-            "validation": "Clean build from scratch generates byte-identical lockfile checksum.",
-        },
-        "Tests": {
-            "title": "End-to-end integration suite lacks negative-path fault injection coverage",
-            "severity": "Medium",
-            "file": "tests/fault_injection_test.ext",
-            "line": 32,
-            "confidence": 0.85,
-            "evidence": ["EVD-TST-004"],
-            "guidance": "Add chaos tests validating that database partitions and HTTP 5xx responses trigger clean degradation.",
-            "validation": "Fault injection suite verifies application stays healthy during simulated downstream failure.",
-        },
-        "Security": {
-            "title": "Internal service API endpoint lacks mutual TLS or HMAC signature verification",
-            "severity": "High",
-            "file": "src/security/api_auth.ext",
-            "line": 40,
-            "confidence": 0.95,
-            "evidence": ["EVD-SEC-005"],
-            "guidance": "Enforce mTLS or Azure Entra Managed Identity service principal tokens for inter-service communication.",
-            "validation": "Unauthenticated probe to internal endpoints yields HTTP 401 Unauthorized.",
-        },
-    }
-
-    selected_stack = stack_catalog.get(stack, default_catalog)
-    results: list[dict] = []
-    finding_num = 1
-
-    for category in scope:
-        template = selected_stack.get(category) or default_catalog.get(category)
-        if template:
-            finding_id = f"REPO-{100 + finding_num}"
-            results.append({
-                "id": finding_id,
-                "title": template["title"],
-                "severity": template["severity"],
-                "category": category,
-                "file": template["file"],
-                "line": template["line"],
-                "confidence": template["confidence"],
-                "evidence": template["evidence"],
-                "guidance": template["guidance"],
-                "validation": template["validation"],
+    rules = sorted({SCOPE_TO_RULES[item] for item in scope if item in SCOPE_TO_RULES})
+    findings: list[dict] = []
+    paths = code.paths()[:MAX_SCANNED_FILES]
+    for path in paths:
+        text = code.read(path) or ""
+        if not text.strip():
+            continue
+        for item in analyze_github_file(path, text, getattr(code, "label", ""), rules)["findings"]:
+            if str(item.get("id", "")).endswith("-OK"):
+                continue  # "nothing found" is not a finding
+            category = CATEGORY_TO_SCOPE.get(item["category"], "Code paths")
+            if category not in scope:
+                continue
+            findings.append({
+                "id": f"REPO-{len(findings) + 1}", "title": item["title"], "severity": item["severity"], "category": category,
+                "file": item["file"], "line": item.get("line") or 1, "confidence": 0.6,
+                "evidence": [f"{item['file']}:{item.get('line') or 1}: {_mask(str(item.get('detail', '')))[:160]}"],
+                "guidance": f"{item.get('impact', '')} {item.get('solution', '')}".strip(),
+                "validation": "Pattern match by a static rule: confirm by reading the line in context before changing anything.",
             })
-            finding_num += 1
-
-    return results
-
+    order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+    findings.sort(key=lambda finding: (order.get(finding["severity"], 4), finding["file"], finding["line"]))
+    return findings[:200], len(paths)

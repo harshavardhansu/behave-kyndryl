@@ -35,11 +35,12 @@ from .mission import STEPS, DecisionInput, MissionTools, SimulatedBrain, cancel_
 from .store import Store
 from .connectors import Projects, configure as configure_connectors, ensure_services, forget_snapshots, storage_root
 from .error_intel import correlate, record_errors
+from .github_browse import GitHubBrowser, GitHubLookupError
 from .task_inputs import TaskStorage, UnsafeArchive, inspect_zip, profile_project
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
 from .sandbox_records import record_measurement
-from .repo_analyzer import analyze_github_file, generate_repository_findings
+from .repo_analyzer import analyze_github_file, scan_repository
 from .resolution_report import generate_resolution_report
 from .mission_report import generate_mission_report_pdf, pick_mission
 from .pdf_generator import generate_incident_resolution_pdf, generate_repo_analysis_pdf
@@ -773,6 +774,34 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         return {"incidentId": incident_id, "evidence": len(evidence), "errorGroups": len(groups), "hasSource": bool(files), "sourceFiles": files, "source": code.label if files else "",
                 "canOpenPullRequest": bool(files and getattr(code, "pull_requests", False) and getattr(code, "token", "")), "project": incident.get("project"), "missing": missing, "message": message}
 
+    # -- GitHub lookups for picking a repository, branch, commit and folder (read-only) --------------
+
+    def github_lookup(action):
+        try:
+            return action(GitHubBrowser(Projects.load()))
+        except GitHubLookupError as problem:
+            raise HTTPException(422, str(problem)) from None
+
+    @application.get("/api/v1/github/repositories")
+    def github_repositories(auth: Auth, q: str = ""):
+        require(auth["user"], "incident:create")
+        return github_lookup(lambda browser: browser.repositories(q[:140]))
+
+    @application.get("/api/v1/github/repositories/{owner}/{name}/branches")
+    def github_branches(owner: str, name: str, auth: Auth):
+        require(auth["user"], "incident:create")
+        return github_lookup(lambda browser: browser.branches(f"{owner}/{name}"))
+
+    @application.get("/api/v1/github/repositories/{owner}/{name}/commits")
+    def github_commits(owner: str, name: str, auth: Auth, ref: str = ""):
+        require(auth["user"], "incident:create")
+        return github_lookup(lambda browser: browser.commits(f"{owner}/{name}", ref[:200]))
+
+    @application.get("/api/v1/github/repositories/{owner}/{name}/folders")
+    def github_folders(owner: str, name: str, auth: Auth, ref: str = ""):
+        require(auth["user"], "incident:create")
+        return github_lookup(lambda browser: browser.folders(f"{owner}/{name}", ref[:200]))
+
     @application.patch("/api/v1/errors/{error_id}")
     def update_error(error_id: str, payload: ErrorStatusInput, auth: Auth):
         def update(state: dict):
@@ -913,9 +942,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.post("/api/v1/repositories/analyses", status_code=201)
     def analyze_repository(payload: RepositoryInput, auth: Auth):
         require(auth["user"], "workflow:run", payload.environment)
+        scanned: tuple[list[dict], int, str] | None = None
         if payload.source == "repository":
-            if "example.invalid" in payload.url or payload.url == "https://example.invalid/private/repo":
-                raise HTTPException(503, "Repository adapter not configured. No URL was accessed. Configure a read-only application identity and repository allowlist before analysis.")
+            # Read the real repository (public, or connected by an administrator) and run the static rules on its files.
+            match = re.match(r"^(?:https?://github\.com/)?([A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}?)(?:\.git)?/?$", payload.url.strip())
+            if not match:
+                raise HTTPException(422, "Give a GitHub repository as owner/name or https://github.com/owner/name.")
+            ref = payload.commit if payload.commit and payload.commit != "c7f4e21" else payload.branch
+            code = Projects.load().resolve({"service": "", "repository": {"repo": match.group(1), "ref": ref, "path": ""}}).code
+            if not code.paths():
+                raise HTTPException(422, code.problem or "The repository has no readable source files.")
+            findings_found, files_scanned = scan_repository(code, list(payload.scope))
+            scanned = (findings_found, files_scanned, code.label)
         elif payload.source == "fixture":
             if config.mode != "demo":
                 raise HTTPException(409, "Synthetic repository replay is available only in the demo workspace.")
@@ -943,15 +981,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 limitations_msg = "Predefined example findings, not executed static analysis. No repository URL was accessed, no archive extracted and no code executed."
                 audit_action = "Synthetic source analysis replayed"
             else:
-                findings = generate_repository_findings(payload.url, payload.stack, payload.scope, payload.branch, payload.commit)
-                source_label = f"Repository URL (not accessed): {payload.url}"
-                status_label = "Template findings (SIMULATED)"
+                findings, files_scanned, label = scanned
+                findings = redact(findings)
+                source_label = label
+                status_label = "Completed (static rules)"
                 limitations_msg = (
-                    f"SIMULATED: these are template findings for the {payload.stack} stack across {len(payload.scope)} scope(s). "
-                    "The repository was not cloned or read, no code was analysed and no AI agent was run. "
-                    "Connect an authorized read-only repository adapter for real analysis."
+                    f"Static rules ran on {files_scanned} real files of {label} across {len(payload.scope)} scope(s). "
+                    "Findings are pattern matches with file and line, not proof: read each line in context. "
+                    "No code was run and no AI model was used; start an agent mission for a diagnosis and a fix."
                 )
-                audit_action = "Template repository findings generated (simulated)"
+                audit_action = "Repository scanned with static rules"
 
             record = {
                 "id": identifier("ANL"),

@@ -349,7 +349,7 @@ security:
       setTab('Analysis findings')
       notify(
         source === 'repository'
-          ? 'Simulated template findings recorded. The repository was not accessed.'
+          ? 'Repository read and scanned with static rules. Findings name the file and line to check.'
           : 'Synthetic source analysis replay recorded.'
       )
     } catch (failure) {
@@ -552,7 +552,7 @@ security:
       {tab === 'Analysis findings' &&
         (latest ? (
           <>
-            <Notice title="Synthetic analysis output">
+            <Notice title={latest.status.includes('static rules') ? 'Static rules on real files' : 'Synthetic analysis output'}>
               {latest.limitations}
             </Notice>
             <div className="section-spacer" />
@@ -890,7 +890,7 @@ security:
                 }}
               >
                 <option value="fixture">Synthetic checkout fixture</option>
-                <option value="repository">Authorized repository URL</option>
+                <option value="repository">GitHub repository</option>
               </Select>
             </label>
             {source === 'repository' && (
@@ -992,12 +992,12 @@ security:
               title={
                 source === 'fixture'
                   ? 'Synthetic analysis replay'
-                  : 'Simulated template findings'
+                  : 'Static rules on the real files'
               }
             >
               {source === 'fixture'
                 ? 'Results come from the Java/Spring Boot source fixture: predefined example findings, not executed analysis.'
-                : 'The repository is not cloned or read. The result is clearly labelled template findings for the selected stack; connect an authorized read-only repository adapter for real analysis.'}
+                : 'The GitHub repository (owner/name or its URL) is read at the given branch or commit: public repositories without a token, private ones only if an administrator connected them. Static rules check secrets, containers, workflows and reliability patterns; each finding names a file and line. Nothing is run and no AI model is used.'}
             </Notice>
             {error && (
               <Notice title="Analysis not completed" tone="error">

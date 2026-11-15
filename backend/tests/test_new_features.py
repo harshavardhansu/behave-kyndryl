@@ -76,43 +76,45 @@ def test_expanded_file_upload_support(client):
     assert "config.yml" in record["title"]
 
 
-def test_repository_analysis_with_14_agent_engine(client):
+def test_repository_analysis_scans_the_real_files(client, monkeypatch):
+    """The Repositories page reads the actual repository and reports rule matches with file and line, never templates."""
+    from backend import connectors
+    from backend.tests.test_fix_delivery import FakeGitHub
+
     login(client)
-    # 1. Invalid domain returns 503 safety response
-    invalid_payload = {
-        "source": "repository",
-        "url": "https://example.invalid/private/repo",
-        "scope": ["Configuration", "Security"],
-        "permissionConfirmed": True,
-    }
-    assert client.post("/api/v1/repositories/analyses", json=invalid_payload).status_code == 503
+    invalid_payload = {"source": "repository", "url": "https://example.invalid/private/repo", "scope": ["Configuration", "Security"], "permissionConfirmed": True}
+    assert client.post("/api/v1/repositories/analyses", json=invalid_payload).status_code == 422  # not GitHub: nothing is fetched
 
-    # 2. Legitimate repository analysis returns 201 with 14-agent findings
-    valid_payload = {
-        "source": "repository",
-        "url": "https://github.com/northstar/payment-service",
-        "branch": "main",
-        "commit": "a1b2c3d",
-        "stack": "Python",
-        "environment": "Staging",
-        "scope": ["Configuration", "Code paths", "Dependencies", "Tests", "Security"],
-        "incidentId": "INC-1042",
-        "permissionConfirmed": True,
-    }
+    github = FakeGitHub({"app/settings.py": 'API_KEY = "abcdefghijklmnop1234"\nDEBUG = True\n', "Dockerfile": "FROM python:3.13\nCOPY . .\n", "README.md": "hello\n"})
+    original = connectors.GitHubCode.__init__
+
+    def fake_init(self, repo, ref="", path="", api="https://api.github.com", token="", client=None, pull_requests=False):
+        assert token == "" and ref == "a1b2c3d"  # a typed-in repository never uses the server token; the chosen commit is read
+        original(self, repo, ref, path, api, token=token, client=github.client, pull_requests=pull_requests)
+
+    monkeypatch.setattr(connectors.GitHubCode, "__init__", fake_init)
+    monkeypatch.setattr(github, "handle", _with_ref_tarball(github.handle))
+    valid_payload = {"source": "repository", "url": "https://github.com/northstar/payment-service", "branch": "main", "commit": "a1b2c3d", "stack": "Python",
+                     "environment": "Staging", "scope": ["Configuration", "Code paths", "Dependencies", "Tests", "Security"], "incidentId": "INC-1042", "permissionConfirmed": True}
     response = client.post("/api/v1/repositories/analyses", json=valid_payload)
-    assert response.status_code == 201
+    assert response.status_code == 201, response.text
     data = response.json()
-    assert data["source"] == "Repository URL (not accessed): https://github.com/northstar/payment-service"
-    assert data["status"] == "Template findings (SIMULATED)"
-    assert "SIMULATED" in data["limitations"] and "not cloned" in data["limitations"]
-    assert len(data["findings"]) == 5
-    assert any(f["category"] == "Security" for f in data["findings"])
-    assert any(f["category"] == "Configuration" for f in data["findings"])
-    assert any(f["category"] == "Code paths" for f in data["findings"])
+    assert data["status"] == "Completed (static rules)" and "GitHub northstar/payment-service" in data["source"]
+    assert "real files" in data["limitations"] and "SIMULATED" not in data["limitations"]
+    secret = next(finding for finding in data["findings"] if finding["category"] == "Security" and finding["file"] == "app/settings.py")
+    assert secret["line"] == 1 and secret["evidence"][0].startswith("app/settings.py:1")
+    assert "abcdefghijklmnop1234" not in response.text  # the matched secret is redacted from the stored record
+    assert any(finding["file"] == "Dockerfile" for finding in data["findings"])
 
-    # 3. Workspace analyses contains this record
-    workspace = client.get("/api/v1/workspace").json()
-    assert any(a["id"] == data["id"] for a in workspace["analyses"])
+
+def _with_ref_tarball(handle):
+    import httpx
+
+    def wrapped(request: httpx.Request):
+        if "/tarball/" in request.url.path and not request.url.path.endswith("/tarball/main"):
+            request = httpx.Request(request.method, str(request.url).rsplit("/tarball/", 1)[0] + "/tarball/main", headers=request.headers)
+        return handle(request)
+    return wrapped
 
 
 def test_pdf_report_endpoints(client):

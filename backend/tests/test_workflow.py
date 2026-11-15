@@ -212,7 +212,7 @@ def test_rollback_requires_deployed_change_and_invalidates_approval(client):
 def test_repository_replay_is_explicit_and_never_fetches_urls(client):
     login(client)
     payload = {"source": "repository", "url": "https://example.invalid/private/repo", "scope": ["Configuration", "Tests"], "permissionConfirmed": True}
-    assert client.post("/api/v1/repositories/analyses", json=payload).status_code == 503
+    assert client.post("/api/v1/repositories/analyses", json=payload).status_code == 422  # not a GitHub repository: nothing is fetched
     payload["source"] = "fixture"
     response = client.post("/api/v1/repositories/analyses", json=payload)
     assert response.status_code == 201
