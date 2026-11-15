@@ -42,11 +42,11 @@ def agent_name(role: str) -> str:
 
 MUST_USE = {
     "intake": "get_ticket and list_evidence",
-    "logs": "list_log_files, search_logs with at least two different search words (one with level ERROR), and read_log around the first error to see what changed just before it",
+    "logs": "get_error_groups, list_log_files, search_logs with at least two different search words (one with level ERROR), and read_log around the first error to see what changed just before it",
     "observability": "get_service_status, list_log_files and search_logs for latency, pool or saturation signals, then read_evidence on the metric and trace evidence",
     "repository": "list_changes (it includes the latest commits and the files they touched), list_repo_files, search_repo for the setting, function or message named in the error, and read_repo_file on the files that matter (if files exist)",
     "knowledge": "search_knowledge with the service name and the error symptoms",
-    "root-cause": "list_evidence, search_logs to confirm when errors started, then (when source exists) search_repo for the feature or message named in the ticket and read_repo_file on the code that implements it",
+    "root-cause": "get_error_groups (it links stack traces to source lines), list_evidence, search_logs to confirm when errors started, then (when source exists) search_repo for the feature or message named in the ticket and read_repo_file on the code that implements it",
     "remediation": "read_repo_file on the file named in the root-cause finding (search_repo to find it if needed) before proposing any change, then list_changes",
     "testing": "search_repo for existing tests of the affected function and read_repo_file on the affected file when source exists, then get_service_status",
     "security": "list_changes and read_repo_file when source exists",

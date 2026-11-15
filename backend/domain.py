@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # platform sign-in (Azure Container Apps authentication), which the app then also checks per request.
     demo_hosts: str = Field("", validation_alias="AGENTICA_DEMO_HOSTS")
     github_token: SecretStr = Field(SecretStr(""), validation_alias="AGENTICA_GITHUB_TOKEN")  # private repositories and pull requests
+    task_storage_dir: str = Field("", validation_alias="AGENTICA_TASK_STORAGE_DIR")  # uploaded task sources (default: next to the database)
+    max_project_zip_bytes: int = Field(20_971_520, validation_alias="AGENTICA_MAX_PROJECT_ZIP_BYTES", ge=1024, le=104_857_600)
     projects_file: str = Field("", validation_alias="AGENTICA_PROJECTS_FILE")  # which project list to use (default: projects.json)
     github_use_cli: bool = Field(False, validation_alias="AGENTICA_GITHUB_USE_CLI")  # local development: borrow the token of the signed-in GitHub CLI
     require_platform_auth: bool = Field(False, validation_alias="AGENTICA_REQUIRE_PLATFORM_AUTH")
@@ -76,13 +78,22 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class RepositoryInput(StrictModel):
+    """A GitHub repository given for one task. It is read without the server's token unless an administrator connected it."""
+
+    repo: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$")
+    ref: str = Field("", max_length=200, pattern=r"^[A-Za-z0-9._/-]*$")
+    path: str = Field("", max_length=300, pattern=r"^[A-Za-z0-9._/ -]*$")
+
+
 class IncidentInput(StrictModel):
     title: str = Field(min_length=8, max_length=160)
     description: str = Field(min_length=20, max_length=8000)
     severity: Severity
     environment: Environment
-    service: str = Field(min_length=1, max_length=100)
+    service: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
     impact: str = Field(min_length=8, max_length=3000)
+    repository: RepositoryInput | None = None
     source: Literal["Manual report", "Monitoring alert", "Repository analysis", "Application testing", "Telemetry import", "Ticket import"] = "Manual report"
     dataClassification: DataClassification = "Internal"
     error: str = Field("", max_length=6000)

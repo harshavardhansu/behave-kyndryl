@@ -33,7 +33,9 @@ from .foundry_runtime import FoundryAgentService, foundry_agent_status
 from .foundry_brain import FoundryBrain
 from .mission import STEPS, DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
-from .connectors import Projects, ensure_services
+from .connectors import Projects, configure as configure_connectors, ensure_services, forget_snapshots, storage_root
+from .error_intel import correlate, record_errors
+from .task_inputs import TaskStorage, UnsafeArchive, inspect_zip, profile_project
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
 from .sandbox_records import record_measurement
@@ -62,6 +64,11 @@ class KnowledgeInput(StrictModel):
 class KnowledgeReview(StrictModel):
     decision: Literal["approve", "reject"]
     reason: str = Field(min_length=10, max_length=2000)
+
+
+class ErrorStatusInput(StrictModel):
+    status: Literal["Open", "Resolved", "Ignored"]
+    note: str = Field("", max_length=600)
 
 
 class ExportInput(StrictModel):
@@ -162,6 +169,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         swagger_ui_parameters={"syntaxHighlight.theme": "monokai", "tryItOutEnabled": True},
     )
     application.state.store = database
+    configure_connectors(config)  # connectors and task storage follow this application's settings
+    task_storage = TaskStorage(storage_root(config))
     application.state.settings = config
     application.state.provider = configured_provider(config)
     application.state.mission_brain = FoundryBrain(config, database) if ai_configured(config) and config.ai_allowed_classifications else SimulatedBrain()
@@ -350,9 +359,22 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if payload.environment == "Sandbox" and payload.service != "payment-api":
             raise HTTPException(422, "Only the approved Payment API sandbox service is registered in the Sandbox environment.")
 
+        project = None
+        if payload.repository:
+            # Check the repository can really be read before a task is created on it.
+            code = Projects.load().resolve({"service": payload.service, "repository": payload.repository.model_dump()}).code
+            if not code.paths():
+                raise HTTPException(422, code.problem or "The repository has no readable source files.")
+            project = profile_project(code)
+
         def create(state: dict):
-            if payload.service != "payment-api":
-                find(state, "services", payload.service)
+            if payload.service != "payment-api" and not any(service["id"] == payload.service for service in state["services"]):
+                # A new application: add it to the catalog so tasks, errors and reports can be filtered by it.
+                state["services"].append({
+                    "id": payload.service, "name": payload.service, "type": "Service", "health": "Healthy", "environment": payload.environment,
+                    "latency": 0, "errorRate": 0, "rps": 0, "observedAt": now(), "evidence": [], "changes": [], "incidents": [],
+                    "position": {"x": 700, "y": 115}, "connected": True,
+                })
             record = {**redact(payload.model_dump()), "id": identifier("INC"), "status": "New", "owner": auth["user"]["name"], "commander": auth["user"]["name"], "slaMinutes": 60 if payload.severity == "Critical" else 240 if payload.severity == "High" else 1440, "workflowStatus": "Idle", "workflowGeneration": 0, "outcome": "", "recovery": None, "synthetic": False}
             state["incidents"].append(record)
             if payload.service == "payment-api":
@@ -376,6 +398,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     "sandboxAction": {"release": "3.8.1", "pool_size": 20},
                     "sandboxRollbackAction": {"release": "previous", "pool_size": 20},
                 })
+            record["sourceUploads"] = []
+            if project:
+                record["project"] = project
+            if payload.error:
+                record_errors(state, record, payload.error, "", now(), identifier)  # a pasted stack trace is tracked like an uploaded log
             audit(state, auth["user"], "Incident created", record["id"], record, next_state="New")
             return record
         return database.mutate(create)
@@ -597,9 +624,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if not filename or len(filename) > 180 or any(character in filename for character in ("/", "\\", "\x00", ":")) or filename.startswith("."):
             raise HTTPException(422, "Unsafe filename. Provide a plain file name without path components.")
         extension = filename.rsplit(".", 1)[-1].lower()
-        allowed_extensions = {"txt", "log", "json", "csv", "yml", "yaml", "xml", "py", "java", "ts", "js", "sql", "md", "sh"}
+        code_extensions = {"py", "java", "kt", "ts", "tsx", "js", "jsx", "php", "go", "cs", "sql", "sh", "html", "css"}
+        allowed_extensions = {"txt", "log", "json", "jsonl", "csv", "yml", "yaml", "xml", "md", "zip"} | code_extensions
         if extension not in allowed_extensions:
-            raise HTTPException(415, "Supported evidence: UTF-8 text, log, JSON, CSV, YAML, XML, SQL, Markdown, or source code files. Archives and executable binaries are not accepted.")
+            raise HTTPException(415, "Supported: logs (.log .txt .json .jsonl .csv .xml), source and configuration files, or a .zip of logs or of a whole project. Executable binaries are not accepted.")
+        if extension == "zip":
+            return await upload_archive(incident_id, auth, file, filename, data_classification)
         media_type = (file.content_type or "application/octet-stream").split(";", 1)[0].strip().lower()
         allowed_types = {
             "txt": {"text/plain"},
@@ -616,6 +646,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             "sql": {"application/sql", "text/sql", "text/plain"},
             "md": {"text/markdown", "text/plain"},
             "sh": {"text/x-shellscript", "text/plain"},
+            "jsonl": {"application/jsonl", "application/x-ndjson", "application/json", "text/plain"},
+            "html": {"text/html", "text/plain"},
+            "css": {"text/css", "text/plain"},
         }
         if media_type not in allowed_types.get(extension, {"text/plain"}) | {"application/octet-stream"}:
             await file.close()
@@ -628,6 +661,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             text = content.decode("utf-8-sig")
             if "\x00" in text:
                 raise ValueError("Binary content")
+            raw_text = text
             parsed = json.loads(text) if extension == "json" else list(csv.DictReader(io.StringIO(text))) if extension == "csv" else None
             if parsed is not None:
                 text = json.dumps(redact(parsed), indent=2)
@@ -638,7 +672,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         def attach(state: dict):
             current = find(state, "incidents", incident_id)
             require(auth["user"], "evidence:add", current["environment"])
-            ev_type = "Log" if extension in {"log", "txt"} else "Data" if extension in {"json", "csv"} else "Configuration" if extension in {"yml", "yaml", "xml"} else "Code" if extension in {"py", "java", "ts", "js", "sql", "sh"} else "Document"
+            ev_type = "Log" if extension in {"log", "txt", "jsonl"} else "Data" if extension in {"json", "csv"} else "Configuration" if extension in {"yml", "yaml", "xml"} else "Code" if extension in code_extensions else "Document"
             record = {"id": evidence_id, "incidentId": incident_id, "title": f"Attached file: {filename}", "type": ev_type, "source": f"upload:{filename}", "timestamp": now(), "service": current["service"], "environment": current["environment"], "classification": "Unverified", "excerpt": redact(text), "reason": "User-supplied error or diagnostic evidence. Content was parsed, validated, and redacted before storage.", "traceId": "", "fileName": filename, "sha256": hashlib.sha256(content).hexdigest(), "synthetic": False}
             record["dataClassification"] = strongest_classification(current, {"dataClassification": data_classification})
             record.update(evidence_provenance(record, content, auth["user"], media_type, "uploaded-bytes"))
@@ -656,9 +690,110 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     continue
                 level = str(log.get("level", log.get("severity", "INFO"))).upper()
                 state["logs"].append({"id": identifier("LOG"), "timestamp": original_time, "level": level if level in {"ERROR", "WARN", "INFO", "DEBUG"} else "INFO", "service": current["service"], "environment": current["environment"], "message": redact(str(log["message"]))[:8000], "traceId": redact(str(log.get("traceId", log.get("trace_id", ""))))[:200], "source": record["source"], "attributes": {"originalSeverity": redact(level), "sourceRecord": json.dumps(redact(log))[:12000]}, "evidenceId": evidence_id, "dataClassification": record["dataClassification"]})
+            if ev_type in {"Log", "Data"}:
+                record["errorGroups"] = [issue["id"] for issue in record_errors(state, current, raw_text, evidence_id, now(), identifier)]
+            if ev_type in {"Code", "Configuration"}:
+                # A source file is also kept as the task's source, so agents can read it in full and a fix can be built against it.
+                current.setdefault("sourceUploads", []).append({"id": evidence_id, "name": filename, "kind": "file", "files": 1, "sha256": record["sha256"], "at": now()})
+                current["project"] = profile_project(Projects.load().resolve(current).code)
             audit(state, auth["user"], "Evidence file imported", evidence_id, current, evidence=evidence_id)
             return record
+        if extension in code_extensions | {"yml", "yaml", "xml"}:
+            task_storage.save(incident_id, evidence_id, {filename: raw_text})
         return database.mutate(attach)
+
+    async def upload_archive(incident_id: str, auth: dict, file: UploadFile, filename: str, data_classification: str):
+        """A ZIP of logs or of a whole project. It is inspected in memory and never unpacked to disk."""
+        content = await file.read(config.max_project_zip_bytes + 1)
+        await file.close()
+        if not content or len(content) > config.max_project_zip_bytes:
+            raise HTTPException(413, f"A project archive must be nonempty and no larger than {config.max_project_zip_bytes // 1_048_576} MB.")
+        try:
+            inspected = inspect_zip(content)
+        except UnsafeArchive as problem:
+            raise HTTPException(422, str(problem)) from None
+        sources, logs = inspected["sources"], inspected["logs"]
+        if not sources and not logs:
+            raise HTTPException(422, "The archive has no readable source files or logs.")
+        evidence_id = identifier("EVD")
+        if sources:
+            task_storage.save(incident_id, evidence_id, sources)
+
+        def attach(state: dict):
+            current = find(state, "incidents", incident_id)
+            require(auth["user"], "evidence:add", current["environment"])
+            groups: list[str] = []
+            base = {"incidentId": incident_id, "timestamp": now(), "service": current["service"], "environment": current["environment"], "classification": "Unverified", "traceId": "", "synthetic": False}
+            for name, text in logs.items():
+                log_id = identifier("EVD")
+                log_record = {**base, "id": log_id, "title": f"Log from {filename}: {name}"[:180], "type": "Log", "source": f"upload:{filename}:{name}"[:500], "excerpt": redact(text[:200_000]),
+                              "reason": "Log file found inside an uploaded archive. Content was redacted before storage.", "fileName": name, "sha256": hashlib.sha256(text.encode()).hexdigest()}
+                log_record["dataClassification"] = strongest_classification(current, {"dataClassification": data_classification})
+                log_record.update(evidence_provenance(log_record, text.encode(), auth["user"], "text/plain", "uploaded-archive-member"))
+                log_record["errorGroups"] = [issue["id"] for issue in record_errors(state, current, text, log_id, now(), identifier)]
+                groups += log_record["errorGroups"]
+                state["evidence"].append(log_record)
+            if sources:
+                current.setdefault("sourceUploads", []).append({"id": evidence_id, "name": filename, "kind": "zip", "files": len(sources), "sha256": hashlib.sha256(content).hexdigest(), "at": now()})
+                current["project"] = profile_project(Projects.load().resolve(current).code)
+            listing = "\n".join(list(sources)[:150]) + (f"\n… and {len(sources) - 150} more files" if len(sources) > 150 else "")
+            record = {**base, "id": evidence_id, "title": f"Uploaded archive: {filename}", "type": "Code" if sources else "Document", "source": f"upload:{filename}",
+                      "excerpt": f"{len(sources)} source and configuration files, {len(logs)} log files, {inspected['skipped']} entries not read (binary, too large, vendored or not source).\n{listing}",
+                      "reason": "Archive inspected in memory without unpacking; unsafe paths, links and encrypted entries are refused.", "fileName": filename,
+                      "sha256": hashlib.sha256(content).hexdigest(), "sourceFiles": len(sources), "logFiles": len(logs), "errorGroups": list(dict.fromkeys(groups))}
+            record["dataClassification"] = strongest_classification(current, {"dataClassification": data_classification})
+            record.update(evidence_provenance(record, content, auth["user"], "application/zip", "uploaded-bytes"))
+            state["evidence"].append(record)
+            audit(state, auth["user"], "Project archive imported", evidence_id, current, evidence=evidence_id)
+            return record
+        return database.mutate(attach)
+
+    @application.get("/api/v1/incidents/{incident_id}/readiness")
+    def readiness(incident_id: str, auth: Auth):
+        """What this task has and what is still missing before a code correction can be produced."""
+        require(auth["user"], "read")
+        state = database.read()
+        incident = find(state, "incidents", incident_id)
+        code = Projects.load().resolve(incident, application.state.sandbox_control if is_payment_sandbox(incident) else None).code
+        files = len(code.paths())
+        evidence = [record for record in state["evidence"] if record["incidentId"] == incident_id]
+        groups = [issue for issue in state.get("errors", []) if incident_id in issue["incidentIds"]]
+        missing: list[str] = []
+        if not evidence:
+            missing.append("An error log, a stack trace or another piece of evidence.")
+        if not files:
+            missing.append(code.problem or "The source code: upload the affected file or a project ZIP, or connect the GitHub repository.")
+        if not evidence:
+            message = "Attach an error log or describe the error so the investigation has something to work from."
+        elif not files:
+            message = (f"Your logs have been analysed ({len(groups)} error group{'s' if len(groups) != 1 else ''} found). " if groups else "The evidence is attached. ") + \
+                "The relevant source code is not included. Upload the affected file or a project ZIP, or connect the GitHub repository, so a code correction can be generated and checked. Without it the agents can diagnose from the logs but cannot change any code."
+        else:
+            message = f"Ready: evidence is attached and {files} source file{'s' if files != 1 else ''} can be read from {code.label}."
+        return {"incidentId": incident_id, "evidence": len(evidence), "errorGroups": len(groups), "hasSource": bool(files), "sourceFiles": files, "source": code.label if files else "",
+                "canOpenPullRequest": bool(files and getattr(code, "pull_requests", False) and getattr(code, "token", "")), "project": incident.get("project"), "missing": missing, "message": message}
+
+    @application.patch("/api/v1/errors/{error_id}")
+    def update_error(error_id: str, payload: ErrorStatusInput, auth: Auth):
+        def update(state: dict):
+            issue = find(state, "errors", error_id)
+            require(auth["user"], "incident:update", issue["environment"])
+            previous = issue["status"]
+            issue.update(status=payload.status, statusBy=auth["user"]["name"], statusAt=now(), statusNote=redact(payload.note))
+            audit(state, auth["user"], "Error issue status changed", error_id, previous=previous, next_state=payload.status)
+            return issue
+        return database.mutate(update)
+
+    @application.get("/api/v1/errors/{error_id}/source")
+    def error_source(error_id: str, auth: Auth):
+        """Where this error's stack trace points in the connected source code (or why that cannot be established)."""
+        require(auth["user"], "read")
+        state = database.read()
+        issue = find(state, "errors", error_id)
+        incident = next((item for item in reversed(state["incidents"]) if item["id"] in issue["incidentIds"]), None)
+        if incident is None:
+            return {"matches": [], "note": "This error is not linked to a task, so there is no source code to look in."}
+        return correlate(issue, Projects.load().resolve(incident).code)
 
     @application.post("/api/v1/incidents/import", status_code=201)
     async def import_tickets(auth: Auth, file: UploadFile = File(...)):

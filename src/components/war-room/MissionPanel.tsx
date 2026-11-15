@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
     Ban,
     Bot,
@@ -13,9 +14,9 @@ import {
     Users,
     XCircle,
 } from 'lucide-react'
-import type { Incident, Mission, MissionGate, MissionPatch } from '../../types'
+import type { Incident, Mission, MissionGate, MissionPatch, TaskReadiness } from '../../types'
 import { isOpenMission, ROLE_NAMES } from '../../lib/missions'
-import { post } from '../../lib/api'
+import { post, request } from '../../lib/api'
 import { errorMessage, time } from '../../lib/format'
 import { useWorkspace } from '../../context'
 import { Badge, Button } from '../ui'
@@ -184,6 +185,30 @@ function GateCard({ mission, gate, incident }: { mission: Mission; gate: Mission
     )
 }
 
+/** What this task has (evidence, source code) and what is still missing before a code correction is possible. */
+function TaskReadinessNote({ incidentId, evidence }: { incidentId: string; evidence: number }) {
+    const query = useQuery({ queryKey: ['readiness', incidentId, evidence], queryFn: () => request<TaskReadiness>(`/incidents/${incidentId}/readiness`) })
+    const readiness = query.data
+    if (!readiness) return null
+    const project = readiness.project
+    return (
+        <div className={`mission-readiness ${readiness.missing.length ? 'is-missing' : 'is-ready'}`} role="status">
+            <p>{readiness.message}</p>
+            {readiness.hasSource && project && project.files > 0 && (
+                <p className="mission-readiness-project">
+                    {[
+                        project.languages.slice(0, 3).map((language) => language.name).join(', '),
+                        project.frameworks.join(', '),
+                        project.entryPoints.length ? `entry: ${project.entryPoints[0]}` : '',
+                        project.tests.files ? `${project.tests.files} test file${project.tests.files === 1 ? '' : 's'}${project.tests.frameworks.length ? ` (${project.tests.frameworks.join(', ')})` : ''}` : 'no tests found',
+                        readiness.canOpenPullRequest ? 'pull requests on' : '',
+                    ].filter(Boolean).join(' · ')}
+                </p>
+            )}
+        </div>
+    )
+}
+
 /** The exact code change the approver is asked to accept: one diff per file. */
 function PatchView({ patch }: { patch: MissionPatch }) {
     return (
@@ -234,7 +259,7 @@ function AIUsageMeter() {
 }
 
 export function MissionPanel({ incident, mission }: { incident: Incident; mission: Mission | undefined }) {
-    const { can, notify, refresh } = useWorkspace()
+    const { can, notify, refresh, data } = useWorkspace()
     const [busy, setBusy] = useState(false)
     const events = useMemo(() => [...(mission?.events ?? [])].reverse().slice(0, 14), [mission?.events])
     const open = isOpenMission(mission)
@@ -273,6 +298,7 @@ export function MissionPanel({ incident, mission }: { incident: Incident; missio
                         </p>
                     </div>
                 </div>
+                <TaskReadinessNote incidentId={incident.id} evidence={data.evidence.filter((record) => record.incidentId === incident.id).length} />
                 <div className="mission-empty-actions">
                     <AIUsageMeter />
                     <Button variant="primary" disabled={busy || !can('workflow:run', incident.environment)} busy={busy} onClick={() => void call(`/incidents/${incident.id}/missions`, 'Mission started. The Orchestrator is analysing the ticket.')}>

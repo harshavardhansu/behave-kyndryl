@@ -39,7 +39,7 @@ class AuthSession(Base):
     body: Mapped[dict] = mapped_column(JSON)
 
 
-COLLECTIONS = ("incidents", "services", "dependencies", "evidence", "hypotheses", "agents", "tests", "security", "changes", "approvals", "logs", "knowledge", "deployments", "integrations", "missions")
+COLLECTIONS = ("incidents", "services", "dependencies", "evidence", "hypotheses", "agents", "tests", "security", "changes", "approvals", "logs", "knowledge", "deployments", "integrations", "missions", "errors")
 Result = TypeVar("Result")
 
 

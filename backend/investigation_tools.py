@@ -48,6 +48,7 @@ TOOL_SPECS: list[dict] = [
     {"name": "list_evidence", "description": "List every evidence record attached to this incident (id, type, title, classification, source).", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "read_evidence", "description": "Read the full text of one evidence record by id, for example an attached log file.", "parameters": {"type": "object", "properties": {"id": {"type": "string", "description": "Evidence id such as EVD-301"}}, "required": ["id"], "additionalProperties": False}},
     {"name": "search_logs", "description": "Search the service's log files, the live sandbox log and log evidence for a word or phrase (case-insensitive). Returns the total count, first and last time it appears, and matching lines with file:line. Optionally filter by level (ERROR, WARN, INFO).", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "Word or phrase, e.g. 'timeout' or 'HikariPool'"}, "level": {"type": "string", "description": "Optional: ERROR, WARN or INFO"}}, "required": ["query"], "additionalProperties": False}},
+    {"name": "get_error_groups", "description": "The errors parsed from this incident's logs, grouped by fingerprint: type, message, how often and when each occurred, its stack frames, and where those frames point in the connected source code (file, line and the surrounding lines) when that can be established.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "list_log_files", "description": "List the log files available for the affected service, with line counts and the time range they cover.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "read_log", "description": "Read a window of lines from one log file (up to 40 lines). Without start_line it returns the last lines. Use search_logs first to find the line numbers that matter.", "parameters": {"type": "object", "properties": {"file": {"type": "string", "description": "Name from list_log_files"}, "start_line": {"type": "integer", "description": "1-based line number to start at"}, "lines": {"type": "integer", "description": "How many lines (max 40)"}}, "required": ["file"], "additionalProperties": False}},
     {"name": "get_service_status", "description": "Read the current state of the affected service: recorded health, metric evidence and, for the Payment API sandbox, the live active configuration.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}},
@@ -74,6 +75,7 @@ class InvestigationTools:
             "search_logs": self.search_logs, "get_service_status": self.get_service_status, "list_changes": self.list_changes,
             "list_repo_files": self.list_repo_files, "read_repo_file": self.read_repo_file, "search_repo": self.search_repo,
             "list_log_files": self.list_log_files, "read_log": self.read_log, "search_knowledge": self.search_knowledge,
+            "get_error_groups": self.get_error_groups,
         }
 
     # -- dispatch --------------------------------------------------------
@@ -122,7 +124,7 @@ class InvestigationTools:
             return f"{result['total']} matching lines" + (f" ({result['firstSeen']} to {result['lastSeen']})" if result.get("firstSeen") else "")
         if name == "read_log" and "file" in result:
             return f"{result['file']} lines {result.get('from')}-{result.get('to')} of {result.get('totalLines')}"
-        for key in ("matches", "evidence", "changes", "files", "articles", "logs"):
+        for key in ("matches", "evidence", "changes", "files", "articles", "logs", "errors"):
             if isinstance(result.get(key), list):
                 return f"{len(result[key])} {key}"
         return {"get_ticket": "ticket read", "read_evidence": result.get("title", "evidence read"), "read_repo_file": f"{result.get('path', 'file')} read", "get_service_status": "status read"}.get(name, "ok")
@@ -134,7 +136,32 @@ class InvestigationTools:
 
     def get_ticket(self) -> dict:
         keys = ("id", "title", "severity", "status", "service", "environment", "description", "impact", "error", "expected", "actual", "detectedAt")
-        return {("errorMessage" if key == "error" else key): _clip(self.incident[key], 1200) for key in keys if self.incident.get(key)}
+        ticket: dict[str, Any] = {("errorMessage" if key == "error" else key): _clip(self.incident[key], 1200) for key in keys if self.incident.get(key)}
+        project = self.incident.get("project")
+        if project:  # what the connected source is, worked out from its files
+            ticket["project"] = {"files": project.get("files"), "languages": [item["name"] for item in project.get("languages", [])], "frameworks": project.get("frameworks"),
+                                 "entryPoints": project.get("entryPoints"), "dependencyFiles": project.get("manifests"), "tests": project.get("tests")}
+        return ticket
+
+    def get_error_groups(self) -> dict:
+        from .error_intel import correlate
+
+        issues = [issue for issue in self.state.get("errors", []) if self.incident["id"] in issue.get("incidentIds", [])]
+        if not issues:
+            return {"errors": [], "note": "No errors were parsed from this incident's logs. Use search_logs on the evidence."}
+        issues.sort(key=lambda issue: (-{"Critical": 3, "High": 2, "Medium": 1, "Low": 0}.get(issue["severity"], 0), -issue["count"]))
+        rows = []
+        for issue in issues[:6]:
+            located = correlate(issue, self.project.code, context=3)
+            rows.append({
+                "id": issue["id"], "type": issue["type"], "category": issue["category"], "severity": issue["severity"], "message": _clip(issue["message"], 300),
+                "occurrences": issue["count"], "firstSeen": issue["firstSeen"], "lastSeen": issue["lastSeen"],
+                "stack": [f"{frame['file']}:{frame['line']} in {frame['function']}" for frame in issue.get("frames", [])[:5]],
+                "inSource": [{"path": match["path"], "line": match["line"], "function": match["function"],
+                              "code": "\n".join(f"{row['number']}{'>' if row['hit'] else ' '} {row['text']}" for row in match["snippet"])} for match in located["matches"][:2]],
+                "sourceNote": located.get("note", ""),
+            })
+        return {"total": len(issues), "errors": rows}
 
     def list_evidence(self) -> dict:
         return {"evidence": [

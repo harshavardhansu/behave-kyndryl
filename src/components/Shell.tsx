@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom'
 import * as Dropdown from '@radix-ui/react-dropdown-menu'
 import {
+  Bug,
   Activity,
   ArrowRight,
   Bell,
@@ -82,6 +83,12 @@ export const navigation: {
       path: '/investigations',
       label: 'Root cause analysis',
       icon: Telescope,
+      group: 'Operations',
+    },
+    {
+      path: '/errors',
+      label: 'Error tracking',
+      icon: Bug,
       group: 'Operations',
     },
     {

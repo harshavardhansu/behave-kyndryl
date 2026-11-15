@@ -136,7 +136,8 @@ def test_upload_validation_redaction_and_timestamp_preservation(client):
     login(client)
     endpoint = "/api/v1/incidents/INC-1042/evidence/upload"
     assert client.post(endpoint, files={"file": ("../escape.txt", b"anything")}).status_code == 422
-    assert client.post(endpoint, files={"file": ("project.zip", b"PK00")}).status_code == 415
+    assert client.post(endpoint, files={"file": ("project.zip", b"PK00")}).status_code == 422  # not a real archive
+    assert client.post(endpoint, files={"file": ("tool.exe", b"MZ")}).status_code == 415
     assert client.post(endpoint, files={"file": ("bad.json", b"{invalid")}).status_code == 422
     response = client.post(endpoint, files={"file": ("observed.json", b'{"timestamp":"2026-01-02T03:04:05+05:30","message":"password=never-show-this","level":"ERROR"}')})
     assert response.status_code == 201

@@ -21,6 +21,7 @@ import { Agents } from './pages/Agents'
 import { Repositories } from './pages/Repositories'
 import { Testing } from './pages/Testing'
 import { Security } from './pages/Security'
+import { Errors } from './pages/Errors'
 import { Changes } from './pages/Changes'
 import { Observability } from './pages/Observability'
 import { Knowledge } from './pages/Knowledge'
@@ -114,6 +115,7 @@ export default function App() {
                   <Route path="repositories" element={<Repositories />} />
                   <Route path="testing" element={<Testing />} />
                   <Route path="security" element={<Security />} />
+                  <Route path="errors" element={<Errors />} />
                   <Route path="changes" element={<Changes />} />
                   <Route path="observability" element={<Observability />} />
                   <Route path="knowledge" element={<Knowledge />} />

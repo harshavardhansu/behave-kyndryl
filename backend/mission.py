@@ -476,6 +476,8 @@ def start_mission(state: dict, incident_id: str, user: dict, brain: MissionBrain
         "pendingGate": None, "iterations": [], "events": [], "learnings": [], "resolution": None, "pausedFrom": None,
     }
     _event(mission, "started", f"Mission started by {user['name']} for {incident_id}: {incident['title']}", actor=user["name"])
+    if not incident.get("synthetic") and not is_payment_sandbox(incident) and not _has_source(incident):
+        _event(mission, "no-source", "No source code is connected to this task. The agents can diagnose from the logs and evidence, but they cannot generate or check a code correction until a file, a project ZIP or a repository is added.", actor="System")
     _new_iteration(mission, 1)
     missions.append(mission)
     audit(state, user, "Agent mission started", mission["id"], incident, next_state="Orchestrator analysing")

@@ -52,14 +52,37 @@ log = logging.getLogger("behave.connectors")
 
 
 _cli_token: list[str] = []
+_settings: list[Any] = []
+
+
+def configure(settings: Any) -> None:
+    """Use the application's settings for every connector created from here on (called by ``create_app``)."""
+    _settings[:] = [settings]
+
+
+def current_settings() -> Any:
+    if _settings:
+        return _settings[0]
+    from .domain import Settings
+
+    return Settings()
+
+
+def storage_root(settings: Any = None) -> Path:
+    """Where uploaded task sources are kept: the configured folder, else a ``tasks`` folder next to the database file."""
+    settings = settings or current_settings()
+    if settings.task_storage_dir:
+        return Path(settings.task_storage_dir)
+    url = str(settings.database_url)
+    if url.startswith("sqlite:///") and ":memory:" not in url:
+        return Path(url.removeprefix("sqlite:///")).parent / "tasks"
+    return PROJECT_ROOT / "data" / "tasks"
 
 
 def github_token() -> str:
     """The GitHub token: AGENTICA_GITHUB_TOKEN, or (local development only, when AGENTICA_GITHUB_USE_CLI
     is on) the token of the GitHub CLI signed in on this machine. It is kept in memory only."""
-    from .domain import Settings
-
-    settings = Settings()
+    settings = current_settings()
     token = settings.github_token.get_secret_value()
     if token or not settings.github_use_cli:
         return token
@@ -298,15 +321,16 @@ def _under(base: Path, folder: Path) -> bool:
 class Projects:
     """The connected projects: ``projects.json`` first, then the built-in demo services."""
 
-    def __init__(self, entries: list[dict] | None = None, token: str = ""):
+    def __init__(self, entries: list[dict] | None = None, token: str = "", storage: Any = None):
         self.entries = {str(entry["service"]): entry for entry in (entries or []) if isinstance(entry, dict) and entry.get("service")}
         self.token = token
+        self.storage = storage  # TaskStorage: sources uploaded for one task
 
     @classmethod
     def load(cls, path: str | os.PathLike | None = None) -> "Projects":
-        from .domain import Settings
+        from .task_inputs import TaskStorage
 
-        chosen = path or Settings().projects_file or "projects.json"
+        chosen = path or current_settings().projects_file or "projects.json"
         file = Path(chosen) if Path(chosen).is_absolute() else PROJECT_ROOT / chosen
         entries: list[dict] = []
         if file.is_file():
@@ -315,7 +339,7 @@ class Projects:
                 entries = loaded.get("projects", []) if isinstance(loaded, dict) else []
             except (OSError, ValueError) as error:
                 log.warning("Ignoring %s: %s", file.name, error)
-        return cls(entries, token=github_token())
+        return cls(entries, token=github_token(), storage=TaskStorage(storage_root()))
 
     def services(self) -> list[dict]:
         """The configured projects as (service id, display name, type) for the service catalog."""
@@ -341,9 +365,30 @@ class Projects:
             return LocalLogs(folder) if _under(PROJECT_ROOT, folder) else LocalLogs()
         return LocalLogs()
 
+    def _task_code(self, incident: dict) -> Any:
+        """Source given for this one task: uploaded files first, then a repository named on the task."""
+        if self.storage is not None and incident.get("sourceUploads") and incident.get("id"):
+            from .task_inputs import UploadedCode
+
+            uploaded = UploadedCode(self.storage, str(incident["id"]))
+            if uploaded.paths():
+                return uploaded
+        repository = incident.get("repository") or {}
+        if repository.get("repo"):
+            known = next((entry.get("code") for entry in self.entries.values()
+                          if str((entry.get("code") or {}).get("repo", "")).lower() == str(repository["repo"]).lower()), None)
+            if known:  # a repository the administrator connected: its own settings (token, pull requests) apply
+                return self._code({**known, "ref": repository.get("ref") or known.get("ref") or "", "path": repository.get("path") or known.get("path") or ""})
+            # Any other repository is read WITHOUT the server's token: only public code, and never a pull request.
+            return GitHubCode(str(repository["repo"]), str(repository.get("ref") or ""), str(repository.get("path") or ""))
+        return None
+
     def resolve(self, incident: dict, sandbox: Any = None) -> Project:
         service = str(incident.get("service", ""))
         entry = self.entries.get(service)
+        task_code = self._task_code(incident)
+        if task_code is not None:
+            return Project(service, str((entry or {}).get("name") or service), task_code, self._logs((entry or {}).get("logs")))
         if entry:
             return Project(service, str(entry.get("name") or service), self._code(entry.get("code")), self._logs(entry.get("logs")))
         if service == "payment-api" and incident.get("environment") == "Sandbox":

@@ -814,3 +814,19 @@
 /* A wide diff line must scroll inside its box, never push the gate under the timeline. */
 .mission-main > * { min-width: 0; }
 .mission-patch details { min-width: 0; }
+
+/* What the task has and what is missing before a code correction is possible. */
+.mission-readiness {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    border: 1px solid var(--line);
+}
+
+.mission-readiness p { margin: 0; }
+.mission-readiness.is-ready { background: #f0fdf4; border-color: #bbf7d0; }
+.mission-readiness.is-missing { background: #fffbeb; border-color: #fde68a; }
+.mission-readiness-project { margin-top: 3px !important; color: var(--muted); }

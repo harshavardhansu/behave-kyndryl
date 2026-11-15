@@ -164,6 +164,24 @@ A sample is in `docs/sample-reports/`.
 `RUN_LIVE_FOUNDRY=1 .venv/bin/python -m pytest backend/tests/test_live_foundry.py -s` (needs the agents provisioned and `python -m backend.azure_login`; costs a few cents).
 After changing agent prompts or tools, re-run `python -m backend.foundry_provision` to update them in Foundry.
 
+## What you can hand over (engineering inputs)
+
+When creating an incident, choose what you are giving the agents:
+
+| Input | What happens |
+|---|---|
+| **Error logs** (`.log .txt .json .jsonl .csv .xml`, or a `.zip` of logs) | Errors and stack traces (Python, Java, JavaScript, JSON lines) are parsed, grouped by a stable fingerprint and listed on the **Error tracking** page with counts, first/last seen and severity. |
+| **Source file** | Read in full by the agents; the fix is an exact, checked diff. |
+| **Project ZIP** (up to 20 MB) | Inspected in memory, never unpacked: paths that escape the archive, links, encrypted entries and zip bombs are refused. Language, framework, entry points, dependency files and tests are detected. |
+| **GitHub repository** | `owner/name` plus an optional branch and folder, read-only. A repository typed in by a user is read without the server's token (public code only) and never gets a pull request; only repositories an administrator put in `projects.json` use the token. |
+
+- **Readiness:** every task says what is still missing. Logs without source get: "the source code is not
+  included... upload the file or connect the repository". Nothing is ever reported as fixed from logs alone.
+- **Log-to-source:** a stack frame is linked to a file only when its path matches exactly one file of the
+  connected source; otherwise the page says the location could not be established.
+- **Real records only:** the error dashboard counts uploaded data, never the demo incidents.
+- Uploaded code is **never executed** (there is no isolated runner yet), so no test or build result is claimed.
+
 ## Connect any project (configuration only)
 
 The agents do not depend on how a project is built. They call generic tools (`list_repo_files`,

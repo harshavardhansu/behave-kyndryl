@@ -350,6 +350,8 @@ export interface Snapshot {
   agents: Agent[]
   tests: TestRun[]
   security: SecurityFinding[]
+  /** Errors parsed from uploaded logs, grouped by fingerprint (real records only). */
+  errors?: ErrorIssue[]
   changes: Change[]
   approvals: Approval[]
   missions: Mission[]
@@ -563,6 +565,70 @@ export interface IncidentInput {
   actual: string
   correlationId: string
   detectedAt: string
+  /** A GitHub repository to read for this task (public, or one an administrator connected). */
+  repository?: { repo: string; ref: string; path: string }
+}
+
+/** What the connected source is, worked out from its files. */
+export interface ProjectProfile {
+  files: number
+  languages: { name: string; files: number }[]
+  frameworks: string[]
+  entryPoints: string[]
+  manifests: string[]
+  tests: { frameworks: string[]; files: number }
+  source?: string
+}
+
+export interface TaskReadiness {
+  incidentId: string
+  evidence: number
+  errorGroups: number
+  hasSource: boolean
+  sourceFiles: number
+  source: string
+  canOpenPullRequest: boolean
+  project?: ProjectProfile | null
+  missing: string[]
+  message: string
+}
+
+export interface StackFrame {
+  file: string
+  line: number | null
+  function: string
+}
+
+/** One error, grouped from every time it was seen in uploaded logs. */
+export interface ErrorIssue {
+  id: string
+  fingerprint: string
+  title: string
+  type: string
+  category: string
+  message: string
+  service: string
+  environment: Environment
+  application: string
+  firstSeen: string
+  lastSeen: string
+  count: number
+  severity: Severity
+  status: 'Open' | 'Resolved' | 'Ignored'
+  incidentIds: string[]
+  evidenceIds: string[]
+  frames: StackFrame[]
+  sourceFiles: string[]
+  sample: { message: string; stack: string[]; requestId: string; correlationId: string; timestampKnown: boolean }
+  createdAt: string
+  statusBy?: string
+  statusAt?: string
+}
+
+export interface ErrorSource {
+  matches: { path: string; line: number | null; function: string; note: string; snippet: { number: number; text: string; hit: boolean }[] }[]
+  note: string
+  source?: string
 }
 
 export interface MissionStep {

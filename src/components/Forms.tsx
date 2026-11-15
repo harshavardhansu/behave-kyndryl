@@ -3,8 +3,12 @@ import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Check,
+  FileArchive,
+  FileCode2,
   FileJson2,
+  FileText,
   FileUp,
+  GitBranch,
   LockKeyhole,
   Plus,
   ShieldCheck,
@@ -15,9 +19,11 @@ import { useWorkspace } from '../context'
 import type { WorkflowAction } from '../context'
 import { post, request } from '../lib/api'
 import { environments, errorMessage, severities } from '../lib/format'
-import type { Incident, IncidentInput } from '../types'
+import type { Incident, IncidentInput, TaskReadiness } from '../types'
 import { actionPermissions, GateList } from './incident'
 import { Badge, Button, Modal, Notice, Select, Tabs } from './ui'
+
+const NEW_SERVICE = '__new__'
 
 function localDateTime() {
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000 - 60_000)
@@ -25,16 +31,34 @@ function localDateTime() {
     .slice(0, 16)
 }
 
+const LOG_TYPES = '.log,.txt,.json,.jsonl,.csv,.xml,.yml,.yaml,.md,.zip'
+const SOURCE_FILE_TYPES = '.py,.java,.kt,.js,.jsx,.ts,.tsx,.php,.go,.cs,.sql,.sh,.html,.css,.json,.yaml,.yml,.xml'
+
+/** The four things a person can hand over, and what happens with each. */
+const INPUT_METHODS = [
+  { id: 'logs', icon: FileText, name: 'Error logs', does: 'Errors and stack traces are found and grouped. Add the code too if you want a fix.' },
+  { id: 'file', icon: FileCode2, name: 'Source file', does: 'The file is read in full, the problem located and an exact correction proposed.' },
+  { id: 'zip', icon: FileArchive, name: 'Project ZIP', does: 'The whole project is inspected (language, framework, tests) and the fix shown as a diff.' },
+  { id: 'github', icon: GitBranch, name: 'GitHub repository', does: 'The chosen branch is read (read-only). The fix is shown as a diff for approval.' },
+] as const
+type InputMethod = (typeof INPUT_METHODS)[number]['id']
+
 function FilePicker({
   file,
   onFile,
   accept,
   onError,
+  maxMegabytes = 2,
+  label = 'Choose evidence file',
+  prompt = 'Select an evidence file',
 }: {
   file: File | null
   onFile: (file: File | null) => void
   accept: string
   onError: (message: string) => void
+  maxMegabytes?: number
+  label?: string
+  prompt?: string
 }) {
   function choose(candidate?: File) {
     if (!candidate) return
@@ -43,8 +67,9 @@ function FilePicker({
       onError(`Unsupported file type. Accepted: ${accept}`)
       return
     }
-    if (candidate.size === 0 || candidate.size > 2 * 1024 * 1024) {
-      onError('Choose a nonempty file no larger than 2 MB.')
+    const limit = extension === '.zip' ? Math.max(maxMegabytes, 20) : maxMegabytes
+    if (candidate.size === 0 || candidate.size > limit * 1024 * 1024) {
+      onError(`Choose a nonempty file no larger than ${limit} MB.`)
       return
     }
     onError('')
@@ -60,18 +85,18 @@ function FilePicker({
       }}
     >
       <FileUp size={28} />
-      <strong>{file ? file.name : 'Select an evidence file'}</strong>
+      <strong>{file ? file.name : prompt}</strong>
       <span>
         {file
           ? `${(file.size / 1024).toFixed(1)} KB / ready to import`
-          : `${accept.replaceAll(',', ' / ')} / UTF-8 / up to 2 MB`}
+          : `${accept.replaceAll(',', ' / ')} / up to ${maxMegabytes} MB${accept.includes('.zip') && maxMegabytes < 20 ? ' (ZIP up to 20 MB)' : ''}`}
       </span>
       <label className="button button-secondary file-picker-label">
         <Upload size={15} />
         {file ? 'Choose another file' : 'Choose file'}
         <input
           type="file"
-          aria-label="Choose evidence file"
+          aria-label={label}
           accept={accept}
           onChange={(event) => choose(event.target.files?.[0])}
         />
@@ -119,6 +144,10 @@ function CreateIncidentDialog() {
   })
   const [file, setFile] = useState<File | null>(null)
   const [errorFile, setErrorFile] = useState<File | null>(null)
+  const [method, setMethod] = useState<InputMethod>('logs')
+  const [sourceFile, setSourceFile] = useState<File | null>(null)
+  const [newService, setNewService] = useState('')
+  const [repository, setRepository] = useState({ repo: '', ref: '', path: '' })
   const [errorFileSnippet, setErrorFileSnippet] = useState<string>('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -129,6 +158,10 @@ function CreateIncidentDialog() {
     setErrorFile(candidate)
     if (!candidate) {
       setErrorFileSnippet('')
+      return
+    }
+    if (candidate.name.toLowerCase().endsWith('.zip')) {
+      setErrorFileSnippet('')  // an archive is inspected on the server; there is nothing to preview here
       return
     }
     const reader = new FileReader()
@@ -162,35 +195,44 @@ function CreateIncidentDialog() {
         setCreateOpen(false)
         navigate('/incidents')
       } else {
+        const service = form.service === NEW_SERVICE ? newService.trim() : form.service
+        if (!service) throw new Error('Give the application or service a name.')
+        if (method === 'github' && !/^[\w.-]+\/[\w.-]+$/.test(repository.repo.trim())) throw new Error('Give the repository as owner/name, for example acme/shop-api.')
         const result = await post<Incident>('/incidents', {
           ...form,
+          service,
           detectedAt: new Date(form.detectedAt).toISOString(),
+          ...(method === 'github' ? { repository: { repo: repository.repo.trim(), ref: repository.ref.trim(), path: repository.path.trim().replace(/^\/+|\/+$/g, '') } } : {}),
         })
-        let attachFailure = ''
-        if (errorFile) {
+        const failures: string[] = []
+        const attached: string[] = []
+        for (const upload of [errorFile, method === 'file' || method === 'zip' ? sourceFile : null]) {
+          if (!upload) continue
           try {
             const body = new FormData()
-            body.append('file', errorFile)
+            body.append('file', upload)
             body.append('dataClassification', 'Internal')
             await request(`/incidents/${result.id}/evidence/upload`, {
               method: 'POST',
               body,
             })
+            attached.push(upload.name)
           } catch (uploadErr) {
-            attachFailure = errorMessage(uploadErr)
+            failures.push(`${upload.name}: ${errorMessage(uploadErr)}`)
           }
         }
+        // Say what the task now has and what is still missing (for example the source code).
+        const readiness = await request<TaskReadiness>(`/incidents/${result.id}/readiness`).catch(() => null)
         await refresh()
         selectIncident(result.id)
         setCreateOpen(false)
         navigate(`/incidents/${result.id}`)
-        if (attachFailure) {
-          notify(`${result.id} was created, but ${errorFile?.name} could not be attached: ${attachFailure}. Add it as evidence from the incident page.`, true)
+        if (failures.length) {
+          notify(`${result.id} was created, but a file could not be attached (${failures.join('; ')}). Add it as evidence from the incident page.`, true)
         } else {
           notify(
-            errorFile
-              ? `${result.id} created with ${errorFile.name} attached as evidence.`
-              : `${result.id} created. Add evidence to begin an investigation.`
+            `${result.id} created${attached.length ? ` with ${attached.join(' and ')} attached as evidence` : ''}. ${readiness?.message ?? 'Add evidence to begin an investigation.'}`,
+            Boolean(readiness && readiness.missing.length)
           )
         }
       }
@@ -239,6 +281,15 @@ function CreateIncidentDialog() {
             </>
           ) : (
             <>
+              <div className="input-methods" role="radiogroup" aria-label="What are you giving us?">
+                {INPUT_METHODS.map(({ id, icon: MethodIcon, name, does }) => (
+                  <button key={id} type="button" role="radio" aria-checked={method === id} className={`input-method ${method === id ? 'is-selected' : ''}`} onClick={() => setMethod(id)}>
+                    <MethodIcon size={18} />
+                    <strong>{name}</strong>
+                    <span>{does}</span>
+                  </button>
+                ))}
+              </div>
               <label className="field-label">
                 Issue title <span className="field-required">Required</span>
                 <input
@@ -290,9 +341,16 @@ function CreateIncidentDialog() {
                       </option>
                     ))}
                     <option value="payment-api">Payment API sandbox</option>
+                    <option value={NEW_SERVICE}>New application…</option>
                   </Select>
                 </label>
               </div>
+              {form.service === NEW_SERVICE && (
+                <label className="field-label">
+                  Application or service name <span className="field-required">Required</span>
+                  <input required maxLength={100} pattern="[A-Za-z0-9][A-Za-z0-9 ._\-]*" placeholder="e.g. hr-portal" value={newService} onChange={(event) => setNewService(event.target.value)} />
+                </label>
+              )}
               <label className="field-label">
                 Description <span className="field-required">Required</span>
                 <textarea
@@ -318,17 +376,59 @@ function CreateIncidentDialog() {
                   placeholder="Customer impact, affected transactions or blocked delivery"
                 />
               </label>
+              {method === 'github' && (
+                <div className="field-group">
+                  <div className="form-grid three">
+                    <label className="field-label">
+                      Repository <span className="field-required">Required</span>
+                      <input required placeholder="owner/name" maxLength={140} value={repository.repo} onChange={(event) => setRepository((current) => ({ ...current, repo: event.target.value }))} />
+                    </label>
+                    <label className="field-label">
+                      Branch, tag or commit
+                      <input placeholder="default branch" maxLength={200} value={repository.ref} onChange={(event) => setRepository((current) => ({ ...current, ref: event.target.value }))} />
+                    </label>
+                    <label className="field-label">
+                      Project folder
+                      <input placeholder="whole repository" maxLength={300} value={repository.path} onChange={(event) => setRepository((current) => ({ ...current, path: event.target.value }))} />
+                    </label>
+                  </div>
+                  <span className="field-hint">
+                    The repository is read only. A public repository needs nothing else; a private one must be connected by an administrator first. Nothing is ever pushed to its default branch.
+                  </span>
+                </div>
+              )}
+              {(method === 'file' || method === 'zip') && (
+                <div className="field-group">
+                  <label className="field-label">
+                    {method === 'zip' ? 'Project ZIP' : 'Source file'} <span className="field-required">Required for a code correction</span>
+                    <span className="field-hint">
+                      {method === 'zip'
+                        ? 'Checked without unpacking: unsafe paths, links and password-protected archives are refused. Only source, configuration and log files are read; nothing is run.'
+                        : 'The agents read the whole file and propose an exact change you can review line by line.'}
+                    </span>
+                  </label>
+                  <FilePicker
+                    file={sourceFile}
+                    onFile={setSourceFile}
+                    accept={method === 'zip' ? '.zip' : SOURCE_FILE_TYPES}
+                    maxMegabytes={method === 'zip' ? 20 : 2}
+                    label="Choose source code"
+                    prompt={method === 'zip' ? 'Select the project ZIP' : 'Select the source file'}
+                    onError={setError}
+                  />
+                </div>
+              )}
               <div className="field-group">
                 <label className="field-label">
-                  Attach error log or diagnostic file (Optional)
+                  Attach error log or diagnostic file {method === 'logs' ? '' : '(Optional)'}
                   <span className="field-hint">
-                    The file is stored as evidence on the new incident, so the Orchestrator and its agents can read it
+                    The file is stored as evidence on the new incident, so the Orchestrator and its agents can read it. Errors and stack traces in it are grouped on the Errors page.
                   </span>
                 </label>
                 <FilePicker
                   file={errorFile}
                   onFile={onDiagnosticFile}
-                  accept=".txt,.log,.json,.csv,.yml,.yaml,.xml,.py,.java,.ts,.js,.sql,.md"
+                  accept={LOG_TYPES}
                   onError={setError}
                 />
                 {errorFileSnippet && (
