@@ -78,6 +78,20 @@ export function initials(name: string) {
     .toUpperCase()
 }
 
+/** Minutes as a short duration: 4m, 2h 10m, 3d 4h. */
+export function minutes(value: number | null | undefined) {
+  if (value === null || value === undefined) return '--'
+  if (value < 1) return '<1m'
+  if (value < 60) return `${Math.round(value)}m`
+  if (value < 1440) return `${Math.floor(value / 60)}h ${Math.round(value % 60)}m`
+  return `${Math.floor(value / 1440)}d ${Math.round((value % 1440) / 60)}h`
+}
+
+/** A measured value, or a dash when nothing measures it (never a made-up number). */
+export function measured(value: number | null | undefined, unit = '') {
+  return value === null || value === undefined ? '—' : `${number(value)}${unit}`
+}
+
 export function number(value: number) {
   return new Intl.NumberFormat('en-US', {
     notation: value > 9999 ? 'compact' : 'standard',

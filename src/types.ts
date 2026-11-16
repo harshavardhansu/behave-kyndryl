@@ -29,6 +29,12 @@ export type EvidenceClass = 'Observed' | 'Inferred' | 'Unverified' | 'Validated'
 
 export interface Incident {
   id: string
+  /** Source files uploaded for this incident (a file or a project ZIP). */
+  sourceUploads?: { id: string; name: string; kind: string; files: number; at: string }[]
+  /** The GitHub repository given for this incident, if any. */
+  repository?: { repo: string; ref: string; path: string } | null
+  /** What the connected source is, worked out from its files. */
+  project?: ProjectProfile | null
   title: string
   description: string
   severity: Severity
@@ -76,9 +82,12 @@ export interface Service {
   | 'External'
   health: Health
   environment: Environment
-  latency: number
-  errorRate: number
-  rps: number
+  /** null: not measured (no monitoring connector is connected). */
+  latency: number | null
+  errorRate: number | null
+  rps: number | null
+  /** What the health value is based on (real workspaces). */
+  healthBasis?: string
   observedAt: string
   evidence: string[]
   changes: string[]
@@ -195,6 +204,20 @@ export interface SecurityFinding {
   file: string
   line: number
   guidance: string
+  /** Where the scanned code came from (real findings). */
+  source?: string
+  firstSeen?: string
+  lastSeen?: string
+  synthetic?: boolean
+}
+
+export interface DependencyInventory {
+  source: string
+  manifests: { path: string; dependencies: number }[]
+  dependencies: { name: string; version: string; ecosystem: string; scope: string; manifest: string }[]
+  total: number
+  unpinned: number
+  note: string
 }
 
 export interface Gate {
@@ -221,6 +244,8 @@ export interface Change {
   justification: string
   approvalId: string | null
   gates: Gate[]
+  /** The pull request the Tool Gateway opened for this change, if any. */
+  pullRequest?: string
 }
 
 export interface Approval {
@@ -259,6 +284,10 @@ export interface KnowledgeRecord {
   version: string
   reviewedAt: string
   approved: boolean
+  /** The fix was applied and its effect measured here or confirmed by a person. */
+  verified?: boolean
+  missionId?: string
+  fingerprints?: string[]
   source: string
   services: string[]
   incidents: string[]
@@ -291,11 +320,39 @@ export interface Deployment {
   status: string
 }
 
+export interface WorkspaceMetrics {
+  minutesToInvestigation: number | null
+  investigatedIncidents: number
+  minutesToResolution: number | null
+  resolvedIncidents: number
+  resolvedWithAgents: number
+  measuredResolutions: number
+  basis: string
+}
+
+export interface GatewayEntry {
+  id: string
+  action: string
+  kind: string
+  risk: string
+  missionId: string
+  incidentId: string
+  iteration: number
+  requestedBy: string
+  approvedBy: string | null
+  status: 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'DENIED'
+  reason: string
+  startedAt: string
+  finishedAt: string | null
+  durationMs: number | null
+  result: Record<string, unknown>
+}
+
 export interface Integration {
   id: string
   name: string
   category: string
-  status: 'Demo source' | 'Not configured' | 'Configured, not verified'
+  status: string
   description: string
   required: string[]
   authentication?: string
@@ -340,6 +397,12 @@ export interface RepositoryAnalysis {
 
 export interface Snapshot {
   mode: string
+  /** 'real': every record comes from real use. 'demo': the labelled demonstration data set. */
+  workspaceKind?: 'real' | 'demo'
+  /** Response times computed from real records (real workspaces only). */
+  metrics?: WorkspaceMetrics
+  /** Recent Tool Gateway decisions (every outside action the agents asked for). */
+  gateway?: GatewayEntry[]
   snapshotAt: string
   workspace: string
   incidents: Incident[]
@@ -535,6 +598,10 @@ export interface Mission {
   events: MissionEvent[]
   learnings: string[]
   resolution: { by: string; at: string; note: string; iteration: number } | null
+  /** Set when an approved solution was handed to the owning team (status 'Solution ready'). */
+  handoff?: { by: string; at: string; note: string; iteration: number } | null
+  /** The knowledge record this mission wrote (organizational memory). */
+  knowledgeId?: string
 }
 
 export interface Session {

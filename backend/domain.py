@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # platform sign-in (Azure Container Apps authentication), which the app then also checks per request.
     demo_hosts: str = Field("", validation_alias="AGENTICA_DEMO_HOSTS")
     github_token: SecretStr = Field(SecretStr(""), validation_alias="AGENTICA_GITHUB_TOKEN")  # private repositories and pull requests
+    workspace: Literal["demo", "real"] = Field("demo", validation_alias="AGENTICA_WORKSPACE")  # what an empty database starts with
+    azure_search_endpoint: str = Field("", validation_alias="AZURE_SEARCH_ENDPOINT")  # organizational memory (Entra auth, no key)
+    azure_search_index: str = Field("behave-knowledge", validation_alias="AZURE_SEARCH_INDEX", pattern=r"^[a-z0-9][a-z0-9-]{1,126}$")
+    applicationinsights_connection_string: SecretStr = Field(SecretStr(""), validation_alias="APPLICATIONINSIGHTS_CONNECTION_STRING")
+    key_vault_uri: str = Field("", validation_alias="AGENTICA_KEY_VAULT_URI")  # shown as connected only after a live check
     task_storage_dir: str = Field("", validation_alias="AGENTICA_TASK_STORAGE_DIR")  # uploaded task sources (default: next to the database)
     max_project_zip_bytes: int = Field(20_971_520, validation_alias="AGENTICA_MAX_PROJECT_ZIP_BYTES", ge=1024, le=104_857_600)
     projects_file: str = Field("", validation_alias="AGENTICA_PROJECTS_FILE")  # which project list to use (default: projects.json)

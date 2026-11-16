@@ -278,3 +278,54 @@ def correlate(issue: dict, code: Any, context: int = 4) -> dict:
             break
     note = "" if matches else "None of the files named in the stack trace are part of the connected source code (they may belong to a library or another service)."
     return redact({"matches": matches, "note": note, "source": getattr(code, "label", "")})
+
+
+MAX_LOG_RECORDS = 1000  # per uploaded file
+
+
+def parse_log_lines(text: str) -> list[dict]:
+    """Every log line that has a timestamp or a level, with its stack-trace lines folded into the message.
+
+    Used to fill the Observability log view from what was really uploaded. A line keeps an empty timestamp
+    when the log has none; it is never invented.
+    """
+    records: list[dict] = []
+    current: dict | None = None
+    for raw in text.splitlines():
+        if not raw.strip():
+            continue
+        if raw.lstrip().startswith("{") and raw.rstrip().endswith("}"):
+            try:
+                item = json.loads(raw)
+            except ValueError:
+                item = None
+            if isinstance(item, dict):
+                event = _json_event(item)
+                level = str(item.get("level") or item.get("severity") or item.get("levelname") or "").upper()
+                message = str(item.get("message") or item.get("msg") or item.get("error") or item.get("event") or "")
+                if message:
+                    current = {"timestamp": (event or {}).get("timestamp", "") or str(item.get("timestamp") or item.get("time") or ""), "level": level,
+                               "message": message, "requestId": (event or {}).get("requestId", "")}
+                    records.append(current)
+                continue
+        time = TIMESTAMP.search(raw[:60])
+        level = LEVEL.search(raw[:120])
+        if current is not None and not time and (_is_stack_line(raw) or EXCEPTION.match(raw.strip())):
+            if len(current["message"]) < 4000:
+                current["message"] += "\n" + raw.rstrip()
+            continue
+        if time or level:
+            name = level.group(1) if level else ""
+            message = raw[level.end():].lstrip(" :-]|") if level else raw[time.end():].lstrip(" :-]|")
+            found = REQUEST_ID.search(raw) or CORRELATION_ID.search(raw)
+            current = {"timestamp": time.group(1) if time else "", "level": name, "message": message or raw.strip(), "requestId": found.group(1) if found else ""}
+            records.append(current)
+            if len(records) >= MAX_LOG_RECORDS:
+                break
+        else:
+            current = None
+    for record in records:
+        level = record["level"].upper()
+        record["level"] = ("ERROR" if level in ERROR_LEVELS or level == "ERR" else "WARN" if level.startswith("WARN")
+                           else "DEBUG" if level in {"DEBUG", "TRACE"} else "INFO")
+    return records

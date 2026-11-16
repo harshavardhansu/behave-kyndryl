@@ -13,6 +13,7 @@ from backend.connectors import GitHubCode, Projects
 from backend.domain import Settings
 from backend.fix_delivery import build_patch, open_pull_request, replace_lines
 from backend.mission import MissionTools, SimulatedBrain
+from backend.tool_gateway import ToolGateway
 from backend.store import Store
 from backend.tests.test_connectors import archive
 from backend.tests.test_missions import decide, login, mission, start
@@ -157,7 +158,7 @@ def run_to_pull_request(github: FakeGitHub, pull_requests=True):
     source = code(github, pull_requests=pull_requests)
     projects._code = lambda settings: source
     application.state.mission_brain = PatchingBrain(source)
-    application.state.mission_tools = MissionTools(None, projects)
+    application.state.mission_tools = MissionTools(None, projects, ToolGateway(store))
     return application
 
 

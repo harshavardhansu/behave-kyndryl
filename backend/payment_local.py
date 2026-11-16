@@ -200,7 +200,9 @@ class LocalPaymentSandbox:
             if not (self.process and self.process.poll() is None):
                 raise SandboxError("Start the Payment API sandbox first.")
             active = self._get("/control/config")
+        started = time.monotonic()
         result = run_workload(self.url, concurrency)
+        elapsed_ms = round((time.monotonic() - started) * 1000)
         counts = {int(code): count for code, count in result.get("status_counts", {}).items()}
         errors = sum(count for code, count in counts.items() if code >= 500)
         not_found = counts.get(404, 0)
@@ -217,6 +219,7 @@ class LocalPaymentSandbox:
             "p95Ms": round(result.get("latency_ms", {}).get("p95", 0)),
             "maxMs": round(result.get("latency_ms", {}).get("max", 0)),
             "featureX": not_found == 0,
+            "durationMs": elapsed_ms,
         }
 
 

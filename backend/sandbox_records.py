@@ -29,6 +29,25 @@ def record_measurement(state: dict, incident: dict | None, measurement: dict, lo
     state["sandboxMeasurements"] = state["sandboxMeasurements"][-30:]
     if incident is None:
         return []
+    # The measurement is also a real, executed test run (on the Testing page), with its acceptance criteria.
+    failed_checks = []
+    cases = []
+    # The same criteria the mission uses to call the incident resolved: no failed request, and the release's feature present.
+    for name, ok, expected, actual in (
+        ("no request fails with HTTP 5xx", measurement["errors"] == 0 and measurement["requests"] > 0, "0 failed requests at 50 concurrent clients",
+         f"{measurement['errors']}/{measurement['requests']} failed ({measurement['errorRate']}%); p95 {measurement['p95Ms']} ms, max {measurement['maxMs']} ms"),
+        ("summary endpoint (Feature X) available", bool(measurement.get("featureX")), "GET /payments/summary answers", "available" if measurement.get("featureX") else "not available"),
+    ):
+        cases.append({"name": name, "status": "Passed" if ok else "Failed", "expected": expected, "actual": actual, "duration": 0, "error": "" if ok else actual})
+        if not ok:
+            failed_checks.append(name)
+    state["tests"].append({
+        "id": identifier("TEST"), "incidentId": incident["id"], "suite": "Payment API calibrated workload", "category": "Load test (measured)",
+        "status": "Failed" if failed_checks else "Passed", "passed": len(cases) - len(failed_checks), "failed": len(failed_checks), "skipped": 0, "flaky": 0,
+        "duration": round(float(measurement.get("durationMs", 0)) / 1000, 2), "coverage": None,
+        "commit": f"release {measurement['release']} / pool {measurement['poolSize']}", "environment": "Sandbox", "timestamp": measurement["measuredAt"],
+        "synthetic": False, "source": f"Executed: {measurement['requests']} real requests against the running Payment API sandbox ({purpose})", "cases": cases,
+    })
     ids = []
     metric_id = identifier("EVD")
     state["evidence"].append({

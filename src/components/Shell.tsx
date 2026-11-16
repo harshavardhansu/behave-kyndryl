@@ -164,6 +164,7 @@ export function Shell() {
     signOut,
     notify,
   } = useWorkspace()
+  const real = data.workspaceKind === 'real'
   const routerNavigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
@@ -302,7 +303,7 @@ export function Shell() {
             <Dropdown.Trigger asChild>
               <button className="workspace-switch">
                 <Boxes size={16} />
-                <span>Northstar Commerce</span>
+                <span>{data.workspace}</span>
                 <ChevronDown size={14} />
               </button>
             </Dropdown.Trigger>
@@ -315,7 +316,7 @@ export function Shell() {
                 <Dropdown.Label>Current workspace</Dropdown.Label>
                 <Dropdown.Item disabled>
                   <Check size={15} />
-                  Northstar Commerce
+                  {data.workspace}
                 </Dropdown.Item>
                 <Dropdown.Separator />
                 <Dropdown.Item onSelect={() => navigate('/administration')}>
@@ -432,7 +433,7 @@ export function Shell() {
                   </div>
                 </div>
                 <Dropdown.Separator />
-                <Dropdown.Label>Demo identity</Dropdown.Label>
+                <Dropdown.Label>{real ? 'Acting role' : 'Demo identity'}</Dropdown.Label>
                 {roles.map((role) => (
                   <Dropdown.Item
                     key={role}
@@ -486,10 +487,10 @@ export function Shell() {
         aria-label="Main navigation"
       >
         <div className="sidebar-workspace">
-          <div className="workspace-monogram">N</div>
+          <div className="workspace-monogram">{data.workspace.slice(0, 1)}</div>
           <div>
-            <strong>Northstar</strong>
-            <span>Commerce operations</span>
+            <strong>{data.workspace.split(' ')[0]}</strong>
+            <span>{real ? 'Incident resolution' : 'Commerce operations'}</span>
           </div>
           <IconButton
             label="Collapse navigation"
@@ -543,8 +544,8 @@ export function Shell() {
             <FlaskConical size={18} />
           </div>
           <div>
-            <strong>Demo workspace</strong>
-            <span>Synthetic evidence source</span>
+            <strong>{real ? 'Real workspace' : 'Demo workspace'}</strong>
+            <span>{real ? 'Only real records' : 'Synthetic evidence source'}</span>
           </div>
           <span className="source-dot" />
         </div>
@@ -562,8 +563,8 @@ export function Shell() {
           </div>
           <div className="snapshot-indicator">
             <span className="source-dot" />
-            Synthetic snapshot<span className="breadcrumb-separator">/</span>
-            <span>{dateTime(data.snapshotAt)}</span>
+            {real ? 'Live records' : 'Synthetic snapshot'}<span className="breadcrumb-separator">/</span>
+            <span>{real ? `${data.incidents.length} incidents` : dateTime(data.snapshotAt)}</span>
           </div>
         </div>
         <main
@@ -577,7 +578,7 @@ export function Shell() {
             <ShieldCheck size={13} /> Human-governed operations
           </span>
           <span>
-            Behave Kyndryl <span className="muted">/</span> Local demonstration{' '}
+            Behave Kyndryl <span className="muted">/</span> {real ? 'Real workspace' : 'Local demonstration'}{' '}
             <span className="version-label">v1.0</span>
           </span>
         </footer>
@@ -661,10 +662,10 @@ export function Shell() {
         title="Workspace documentation"
         subtitle="Behave Kyndryl / Resources"
       >
-        <Notice title="Local demonstration">
-          Incident management, evidence storage and approval enforcement are
-          connected to the local API. AI, scanner, repository and deployment
-          providers are not connected.
+        <Notice title={real ? 'What is connected' : 'Local demonstration'}>
+          {real
+            ? 'Every record here comes from real use: uploaded logs and code, GitHub repositories, agent missions and people\'s decisions. The Administration page shows which services are connected, each checked live.'
+            : 'Incident management, evidence storage and approval enforcement are connected to the local API. AI, scanner, repository and deployment providers are not connected.'}
         </Notice>
         <div className="resource-links">
           {data.knowledge

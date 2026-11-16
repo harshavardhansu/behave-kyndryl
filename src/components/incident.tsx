@@ -63,11 +63,18 @@ export const actionPermissions: Record<WorkflowAction, string> = {
   escalate: 'incident:update',
 }
 
-export function nextAction(incident: Incident): {
+export function nextAction(incident: Incident, real = false): {
   action: WorkflowAction
   label: string
   detail: string
 } {
+  if (real && ['Approved', 'Monitoring'].includes(incident.status))
+    return {
+      action: 'verify',
+      label: 'Record verification',
+      detail:
+        'The fix was approved. After the owning team applied it (for example by merging the pull request), record what you observed.',
+    }
   if (incident.workflowStatus === 'Running')
     return {
       action: 'pause',
@@ -189,8 +196,11 @@ export function NextActionButton({
       </Button>
     )
   }
-  const legacyRunning = ['Running', 'Paused', 'Failed'].includes(incident.workflowStatus)
-  if (MISSION_STAGES.includes(incident.status) && !legacyRunning) {
+  const real = data.workspaceKind === 'real'
+  const legacyRunning = !real && ['Running', 'Paused', 'Failed'].includes(incident.workflowStatus)
+  // Real workspace: everything before an approved fix is done by an agent mission (there is no scripted workflow).
+  const missionStage = MISSION_STAGES.includes(incident.status) || (real && ['Root Cause Identified', 'Fix Proposed', 'Testing', 'Awaiting Approval'].includes(incident.status))
+  if (missionStage && !legacyRunning) {
     const hasEvidence = data.evidence.some((record) => record.incidentId === incident.id)
     const allowed = can('workflow:run', incident.environment)
     return (
@@ -218,7 +228,7 @@ export function NextActionButton({
       </Button>
     )
   }
-  const next = nextAction(incident)
+  const next = nextAction(incident, real)
   return (
     <Button
       variant={secondary ? 'secondary' : 'primary'}
@@ -796,8 +806,8 @@ export function ProvenanceNote() {
     <div className="source-note">
       <Info size={14} />
       <span>
-        Synthetic evidence is labeled. Observed relationships, inferred
-        dependencies and causal hypotheses are distinct.
+        Every record shows where it came from. Observed facts, inferred
+        dependencies and causal hypotheses are kept distinct.
       </span>
     </div>
   )

@@ -23,7 +23,8 @@ import {
   Sparkles,
   UploadCloud,
 } from 'lucide-react'
-import { useIncident, useWorkspace } from '../context'
+import { useIncident, useWorkspace, useRealWorkspace } from '../context'
+import { RepositoriesReal } from './RepositoriesReal'
 import type { RepositoryAnalysis, RepositoryFinding } from '../types'
 import { downloadBlob, post } from '../lib/api'
 import { dateTime, errorMessage } from '../lib/format'
@@ -82,7 +83,13 @@ const sourceFiles = [
   },
 ]
 
+/** Real workspaces show the incident's actual source; the demo workspace keeps its labelled example project. */
 export function Repositories() {
+  const real = useRealWorkspace()
+  return real ? <RepositoriesReal /> : <RepositoriesDemo />
+}
+
+function RepositoriesDemo() {
   const { data, refresh, notify, can } = useWorkspace()
   const incident = useIncident()
   const [tab, setTab] = useState('Project overview')

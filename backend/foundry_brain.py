@@ -29,6 +29,7 @@ from .domain import Settings, redact
 from .foundry_agents import AGENTS_CATALOG, get_agent
 from .foundry_runtime import FoundryAgentService, agent_instructions, agent_name, extract_json
 from .investigation_tools import InvestigationTools
+from . import telemetry
 from .fix_delivery import build_patch
 from .mission import MAX_ITERATIONS, ROLE_INFO, SPECIALISTS, SimulatedBrain, MIN_CAUSE_CONFIDENCE
 from .store import Store
@@ -208,6 +209,9 @@ class FoundryBrain:
                 {"id": record["id"], "type": record["type"], "title": _clip(record["title"], 160), "classification": record.get("classification", "Observed"), "excerpt": _clip(record.get("excerpt", ""), 400)}
                 for record in context.get("evidence", [])[:10]
             ],
+            # Organizational memory: approved resolutions of the same error from earlier incidents (may be empty).
+            "organizational_memory": [{"id": item["id"], "title": _clip(item["title"], 160), "verified": item["verified"], "summary": _clip(item["text"], 500)}
+                                      for item in context.get("priorResolutions", [])],
         }
 
     def _authorize(self, context: dict) -> None:
@@ -340,6 +344,11 @@ class FoundryBrain:
         }
 
     def work(self, context: dict, step: str, members: list[dict], prior: list[dict]) -> dict[str, dict]:
+        with telemetry.span(f"mission_step {step}", **{"behave.mission.step": step, "behave.incident.id": context["incident"]["id"],
+                                                        "behave.agents": [member["role"] for member in members]}):
+            return self._work(context, step, members, prior)
+
+    def _work(self, context: dict, step: str, members: list[dict], prior: list[dict]) -> dict[str, dict]:
         available = {record["id"] for record in context.get("evidence", [])}
         base = self._base(context)
         earlier = [{"role": member["role"], "confidence": member["findings"].get("confidence", 0), "summary": _clip(member["findings"]["summary"], 600 if member["role"] in {"root-cause", "remediation", "repository"} else 300)} for member in prior if member.get("findings")][-8:]
@@ -351,7 +360,7 @@ class FoundryBrain:
 
         def run_agent(member: dict):
             payload = {**base, "step": step, "your_role": member["role"], "your_task": _clip(member["task"], 300), "your_deliverable": DELIVERABLE.get(member["role"], DELIVERABLE["default"]), "can_apply_fix_here": bool(context.get("canApplyFix")), "earlier_findings": earlier}
-            tools = InvestigationTools(self.store.read(), context["incident"], self.sandbox)
+            tools = InvestigationTools(self.store.read(), context["incident"], self.sandbox, role=member["role"])
             code = tools.project.code
             wants_edits = member["role"] == "remediation" and bool(code.paths())  # the fix as exact, checkable code edits
             if wants_edits:
@@ -377,7 +386,7 @@ class FoundryBrain:
 
         if agent_members:
             with ThreadPoolExecutor(max_workers=min(len(agent_members), 4)) as pool:
-                futures = {pool.submit(run_agent, member): member for member in agent_members}
+                futures = {pool.submit(telemetry.carry(run_agent), member): member for member in agent_members}
                 for future, member in futures.items():
                     try:
                         role, value = future.result()

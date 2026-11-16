@@ -21,6 +21,7 @@ it records proposals, findings, decisions and learnings for human review.
 """
 
 import asyncio
+import re
 from typing import Literal, Protocol
 
 from fastapi import HTTPException
@@ -29,6 +30,7 @@ from pydantic import Field
 from .domain import StrictModel, now, redact
 from .seed import AGENT_ROLES
 from .store import Store
+from .tool_gateway import ToolGateway, fingerprint
 from .workflow import audit, find, identifier, is_payment_sandbox, require
 
 ROLE_INFO = {role: {"name": name, "purpose": purpose} for role, name, purpose, _ in AGENT_ROLES}
@@ -169,8 +171,34 @@ class SimulatedBrain:
             analysis += f" Building on {len(learnings)} learning(s) from earlier iterations."
         return {"analysis": analysis, "selected": selected, "skipped": skipped}
 
+    @staticmethod
+    def _scripted(incident: dict) -> bool:
+        """Canned findings exist only for the built-in demonstration incidents and the Payment API sandbox scenario."""
+        return bool(incident.get("synthetic")) or is_payment_sandbox(incident)
+
+    def _no_analysis(self, context: dict, members: list[dict]) -> dict[str, dict]:
+        """A real incident without an AI model: state the facts on record and claim nothing else."""
+        incident, evidence = context["incident"], context["evidence"]
+        logs = [record for record in evidence if record.get("type") == "Log"]
+        findings: dict[str, dict] = {}
+        for member in members:
+            if member["role"] == "intake":
+                summary = (f"Recorded as {incident['severity']} on {incident['service']} in {incident['environment']} with {len(evidence)} evidence record(s). "
+                           "No AI model was available, so the ticket was not analysed further.")
+                refs = [record["id"] for record in evidence[:2]]
+            elif member["role"] == "logs":
+                summary = f"{len(logs)} log record(s) are attached. No AI model was available, so they were not analysed; see the Error tracking page for the parsed errors."
+                refs = [record["id"] for record in logs[:3]]
+            else:
+                summary = f"Not performed: no AI model was available for the {ROLE_INFO[member['role']]['name']} agent. Nothing is assumed or invented for this step."
+                refs = []
+            findings[member["role"]] = {"summary": summary, "evidenceIds": refs, "confidence": 0.0}
+        return findings
+
     def work(self, context: dict, step: str, members: list[dict], prior: list[dict]) -> dict[str, dict]:
         incident = context["incident"]
+        if not self._scripted(incident):
+            return self._no_analysis(context, members)
         evidence = context["evidence"]
         hypotheses = sorted(context["hypotheses"], key=lambda item: item["confidence"], reverse=True)
         change = context.get("change")
@@ -236,6 +264,9 @@ class SimulatedBrain:
         return findings
 
     def evaluate(self, context: dict, team_roles: list[str], iteration: int) -> dict:
+        if not self._scripted(context["incident"]):
+            return {"resolved": False, "missing": [], "recommendation": "iterate" if iteration < MAX_ITERATIONS else "escalate",
+                    "detail": "No AI model was available to review this iteration, and nothing was applied or measured, so no outcome is claimed. Retry when the AI service is reachable, or escalate."}
         relevant = set(self.relevant_roles(context))
         missing = [role for role in SPECIALISTS if role in relevant and role not in team_roles]
         if not missing:
@@ -279,7 +310,73 @@ def _context(state: dict, incident_id: str) -> dict:
         # mission ends with an approved solution that the owning team implements.
         "canApplyFix": is_payment_sandbox(incident),
         "hasSource": _has_source(incident),
+        # Organizational memory: approved resolutions of the very same error (matched by error fingerprint).
+        "priorResolutions": _prior_resolutions(state, incident),
     }
+
+
+def _prior_resolutions(state: dict, incident: dict) -> list[dict]:
+    prints = {issue["fingerprint"] for issue in state.get("errors", []) if incident["id"] in issue.get("incidentIds", [])}
+    if not prints:
+        return []
+    return [{"id": record["id"], "title": record.get("title", ""), "verified": bool(record.get("verified")), "text": redact(str(record.get("body", "")))[:600]}
+            for record in state.get("knowledge", [])
+            if record.get("approved") and prints & set(record.get("fingerprints", [])) and incident["id"] not in record.get("incidents", [])][:3]
+
+
+def _remember(state: dict, mission: dict, incident: dict) -> dict:
+    """Organizational memory: write what this mission established into the knowledge base.
+
+    The record is a draft. A different person reviews it (the mission starter cannot approve it);
+    only approved records are searched by the agents. It is marked verified only when the fix was
+    applied and measured here, or later when a person records that the implemented fix works.
+    """
+    findings = [member for iteration in mission["iterations"] for member in iteration["team"] if member.get("findings")]
+
+    def best(*roles: str) -> dict | None:
+        found = [member["findings"] for member in findings if member["role"] in roles]
+        return max(reversed(found), key=lambda item: item.get("confidence", 0)) if found else None
+
+    current = _current(mission)
+    root, fix, check = best("root-cause"), best("remediation"), best("validation", "testing")
+    outcome = current.get("outcome") or {}
+    measurement = outcome.get("measurement")
+    pull = current.get("pullRequest") or {}
+    patch = (fix or {}).get("patch") or {}
+    errors = [issue for issue in state.get("errors", []) if incident["id"] in issue.get("incidentIds", [])]
+    resolved = mission["status"] == "Resolved"
+    sections = [
+        f"Symptoms\n{incident.get('title', '')}. {incident.get('description', '')}" + (f"\nError: {incident['error']}" if incident.get("error") else ""),
+    ]
+    if errors:
+        sections.append("Errors seen\n" + "\n".join(f"- {issue['type']}: {issue['message']} ({issue['count']} times, fingerprint {issue['fingerprint']})" for issue in errors[:5]))
+    if root:
+        sections.append(f"Root cause (confidence {root.get('confidence', 0):.2f}, approved by a person)\n{root['summary']}")
+    if fix:
+        sections.append(f"Fix\n{fix['summary']}" + (f"\nFiles changed: {', '.join(item['path'] for item in patch.get('files', []))}" if patch.get("files") else ""))
+    if pull.get("status") == "OPENED":
+        sections.append(f"Delivered as pull request #{pull.get('number')}: {pull.get('url')}")
+    if check:
+        sections.append(f"How to verify\n{check['summary']}")
+    if measurement:
+        sections.append(f"Measured after the fix\n{outcome.get('detail', '')}")
+    if mission.get("learnings"):
+        sections.append("Lessons from earlier attempts\n" + "\n".join(f"- {item}" for item in mission["learnings"][-4:]))
+    decided = mission.get("resolution") or mission.get("handoff") or {}
+    sections.append(f"Outcome\n{'Resolved and confirmed' if resolved else 'Approved solution handed to the owning team (not applied by this system)'} by {decided.get('by', '')} on {str(decided.get('at', ''))[:10]}."
+                    + (f" Note: {decided['note']}" if decided.get("note") else ""))
+    record = {
+        "id": identifier("KB"), "title": f"Resolution: {incident.get('title', '')}"[:180], "type": "Incident resolution",
+        "owner": f"Agent mission {mission['id']}", "ownerId": mission.get("requestedById", ""), "version": "0.1", "reviewedAt": now(), "approved": False,
+        "verified": bool(resolved and measurement), "source": f"Agent mission {mission['id']} ({'resolved and measured' if resolved and measurement else 'resolved' if resolved else 'solution ready'})",
+        "services": [incident["service"]], "incidents": [incident["id"]], "missionId": mission["id"],
+        "fingerprints": sorted({issue["fingerprint"] for issue in errors})[:20], "body": redact("\n\n".join(sections))[:30000],
+    }
+    state["knowledge"].append(record)
+    mission["knowledgeId"] = record["id"]
+    _event(mission, "memory", f"Organizational memory: wrote {record['id']} ({record['title']}). A different person reviews it; once approved, agents find it for future incidents.", actor="Incident summary", role="summary")
+    audit(state, {"name": "Agent mission", "role": "Incident summary", "id": "agent-mission"}, "Resolution written to knowledge base", record["id"], incident, next_state="Draft for review", evidence=mission["id"])
+    return record
 
 
 def _has_source(incident: dict) -> bool:
@@ -338,19 +435,40 @@ def _new_iteration(mission: dict, number: int) -> None:
 # --------------------------------------------------------------------------
 
 
-def _mission_change(state: dict, mission: dict, incident: dict, summary: str) -> dict:
+def _rollback_text(summary: str) -> str:
+    """The rollback the Remediation agent wrote, if it wrote one."""
+    found = re.search(r"(?is)\brollback\b[^.:]*[:.]?\s*(.{10,400}?)(?:\bverif|\bverification\b|$)", summary)
+    return found.group(0).strip()[:400] if found else ""
+
+
+def _mission_change(state: dict, mission: dict, incident: dict, summary: str, finding: dict | None = None) -> dict:
     change = next((record for record in state["changes"] if record["id"] == mission.get("changeId")), None)
     change = change or next((record for record in state["changes"] if record["incidentId"] == incident["id"] and record["status"] not in {"Completed", "Rolled Back"}), None)
     if change is None:
         change = {
             "id": identifier("CHG"), "incidentId": incident["id"], "title": ("Agent mission fix: " + summary)[:120], "status": "Draft", "risk": "Medium",
             "owner": mission["requestedBy"], "environment": incident["environment"], "branch": f"mission/{mission['id'].lower()}", "commit": f"mission-{mission['id'].lower()}",
-            "files": ["Proposed by the Remediation agent (see mission findings)"], "diff": redact(summary)[:2000],
-            "rollback": "Revert to the last known-good configuration and re-verify error rate and latency.",
-            "plan": ["Review the agent findings and evidence", "Obtain separate human approval", "Apply the change", "Verify recovery"],
+            "files": [], "diff": redact(summary)[:2000], "rollback": "", "plan": [],
             "justification": "Proposed by the agent mission after a human-approved root cause.", "approvalId": None, "gates": [],
         }
         state["changes"].append(change)
+    # What the change really is: the files and diff the Remediation agent produced (checked against the real files).
+    patch = (finding or {}).get("patch") or {}
+    sandbox = is_payment_sandbox(incident)
+    if patch.get("files"):
+        change["files"] = [item["path"] for item in patch["files"]]
+        change["diff"] = redact("\n".join(item["diff"] for item in patch["files"]))[:12000]
+    elif sandbox:
+        action = _sandbox_action(state, incident)
+        change["files"] = ["Payment API sandbox configuration"]
+        change["diff"] = f"Set release {action['release']} and connection-pool size {action['pool_size']} on the isolated sandbox."
+    elif not change["files"]:
+        change["files"] = ["No exact code change: the proposal is described in the mission findings"]
+    change["rollback"] = _rollback_text(summary) or ("Set the previous release and pool size on the sandbox, then re-measure." if sandbox else "Revert this change (for a pull request: revert its merge commit) and re-check the symptoms.")
+    change["plan"] = ["A person approved the root cause", "A different person approves this exact change",
+                      "The Tool Gateway applies it to the sandbox and the workload is re-measured" if sandbox
+                      else "The Tool Gateway opens it as a pull request on a new branch" if patch.get("deliverable")
+                      else "The owning team applies the change", "Verification is recorded before the incident is resolved"]
     mission["changeId"] = change["id"]
     return change
 
@@ -368,7 +486,7 @@ def sync_records(state: dict, mission: dict) -> None:
     # Fix awaiting a human: make it a real change + approval on the Changes page.
     if gate and gate["type"] == "fix":
         remediation = next((member for member in current["team"] if member["role"] == "remediation" and member.get("findings")), None)
-        change = _mission_change(state, mission, incident, (remediation or {}).get("findings", {}).get("summary", gate["detail"]))
+        change = _mission_change(state, mission, incident, (remediation or {}).get("findings", {}).get("summary", gate["detail"]), (remediation or {}).get("findings"))
         approval = next((item for item in state["approvals"] if item.get("missionGateId") == gate["id"]), None)
         if approval is None:
             approval = {"id": identifier("APR"), "changeId": change["id"], "incidentId": incident["id"], "title": change["title"], "requestedBy": mission["requestedBy"],
@@ -389,6 +507,29 @@ def sync_records(state: dict, mission: dict) -> None:
             target = next((record for record in state["changes"] if record["id"] == approval["changeId"]), None)
             if target:
                 target["status"] = "Scheduled" if decision["decision"] == "approve" else "Draft"
+
+    # Each root-cause finding is a hypothesis on the Investigations page, with what people decided about it.
+    for iteration in mission["iterations"]:
+        member = next((item for item in iteration["team"] if item["role"] == "root-cause" and item.get("findings")), None)
+        if member is None:
+            continue
+        finding = member["findings"]
+        decision = next((item for item in iteration["decisions"] if item["type"] == "root-cause"), None)
+        status = ("Confirmed by a person" if decision and decision["decision"] == "approve" else "Rejected by a person" if decision
+                  else "Proposed by agents")
+        hypothesis_id = f"HYP-{mission['id'].removeprefix('MSN-')}-{iteration['number']}"
+        hypothesis = next((item for item in state["hypotheses"] if item["id"] == hypothesis_id), None)
+        if hypothesis is None:
+            hypothesis = {"id": hypothesis_id, "incidentId": incident["id"], "missionId": mission["id"], "synthetic": False}
+            state["hypotheses"].append(hypothesis)
+        first = re.split(r"(?<=[.!?])\s", finding["summary"].strip(), maxsplit=1)[0]
+        hypothesis.update(title=first[:160], status=status, confidence=finding.get("confidence", 0), supports=finding.get("evidenceIds", []), contradicts=[],
+                          missing=[] if finding.get("confidence", 0) >= MIN_CAUSE_CONFIDENCE else ["The agents could not establish the cause with enough confidence."],
+                          nextStep=(decision or {}).get("note") or ("Approve or reject it in the mission." if not decision else ""), statement=finding["summary"],
+                          agent=f"Root-cause analysis agent (mission {mission['id']}, iteration {iteration['number']})", timestamp=member.get("completedAt") or now())
+    pull = current.get("pullRequest") or {}
+    if change and pull.get("status") == "OPENED" and change.get("pullRequest") != pull.get("url"):
+        change.update(pullRequest=pull["url"], branch=pull.get("branch", change["branch"]), commit=f"pull request #{pull.get('number')}", status="Pull request open")
 
     deployed = (current.get("sandboxChange") or {}).get("status") == "SUCCEEDED" or ("fix" in approved and mission["status"] in {"Awaiting resolution review", "Resolved"} and incident.get("synthetic") and not (current.get("outcome") or {}).get("solutionReady"))
     if deployed and change and not current.get("deploymentId"):
@@ -478,6 +619,8 @@ def start_mission(state: dict, incident_id: str, user: dict, brain: MissionBrain
     _event(mission, "started", f"Mission started by {user['name']} for {incident_id}: {incident['title']}", actor=user["name"])
     if not incident.get("synthetic") and not is_payment_sandbox(incident) and not _has_source(incident):
         _event(mission, "no-source", "No source code is connected to this task. The agents can diagnose from the logs and evidence, but they cannot generate or check a code correction until a file, a project ZIP or a repository is added.", actor="System")
+    for prior in _prior_resolutions(state, incident):
+        _event(mission, "memory", f"Organizational memory: this error was resolved before in {prior['id']} ({prior['title']}){'' if prior['verified'] else ', not yet verified in production'}. The agents receive it as context.", actor="Knowledge retrieval", role="knowledge")
     _new_iteration(mission, 1)
     missions.append(mission)
     audit(state, user, "Agent mission started", mission["id"], incident, next_state="Orchestrator analysing")
@@ -517,6 +660,8 @@ def decide(state: dict, mission_id: str, payload: DecisionInput, user: dict) -> 
     note = redact(payload.note.strip())
     current = _current(mission)
     record = {"gateId": gate["id"], "type": gate["type"], "decision": payload.decision, "by": user["name"], "byId": user_id, "note": note, "at": now()}
+    if gate.get("approvedHash"):
+        record["approvedHash"] = gate["approvedHash"]  # the Tool Gateway runs only this exact change
     launch = False
 
     def needs_note(minimum: int = 5) -> None:
@@ -615,6 +760,8 @@ def decide(state: dict, mission_id: str, payload: DecisionInput, user: dict) -> 
             mission["pendingGate"] = None
 
     current["decisions"].append(record)
+    if mission["status"] in {"Resolved", "Solution ready"} and not mission.get("knowledgeId"):
+        _remember(state, mission, incident)
     if mission.get("pendingGate") and mission["pendingGate"]["id"] == gate["id"]:
         mission["pendingGate"] = None
     audit(state, user, f"Mission decision: {gate['title']}", mission["id"], incident, next_state=f"{payload.decision} / {mission['status']}", outcome=payload.decision)
@@ -703,38 +850,68 @@ def _ask_tool(mission: dict, key: str, method: str, *args):
 
 
 class MissionTools:
-    """Real actions a mission may take, only after human approval: a change on the local Payment API
-    sandbox, or a pull request on a connected project that opted in."""
+    """Real actions a mission may take: a change on the local Payment API sandbox, its measuring
+    workload, or a pull request on a connected project that opted in. Every one of them goes through
+    the Tool Gateway, which checks the human approval again on its own before anything runs."""
 
-    def __init__(self, sandbox=None, projects=None):
+    def __init__(self, sandbox=None, projects=None, gateway: "ToolGateway | None" = None):
         self.sandbox = sandbox
         self.projects = projects
+        self.gateway = gateway
+
+    def _through(self, action: str, mission_id: str, approved_value, run, check_target=None) -> dict:
+        if self.gateway is None:
+            return {"status": "DENIED", "error": "No Tool Gateway is configured, so no outside action may run."}
+        return self.gateway.execute(action, mission_id, approved_value, run, check_target)
 
     def open_pull_request(self, request: dict) -> dict:
         from .connectors import Projects
         from .fix_delivery import open_pull_request
 
         incident = request["incident"]
-        try:
+        code_box: dict = {}
+
+        def target(_incident: dict) -> str:
             code = (self.projects or Projects.load()).resolve(incident, self.sandbox).code
-            return open_pull_request(code, request["edits"], incident["id"], request["missionId"], f"Fix {incident['id']}: {incident['title']}", request["body"])
-        except Exception as error:  # noqa: BLE001 - reported to humans, never hidden
-            return {"status": "FAILED", "error": f"The pull request could not be opened: {type(error).__name__}."}
+            code_box["code"] = code
+            if not getattr(code, "pull_requests", False):
+                return "This repository is not opted in to pull requests."
+            if not getattr(code, "token", ""):
+                return "No GitHub token is configured for this repository."
+            return ""
 
-    def apply_fix(self, action: dict) -> dict:
-        try:
-            return self.sandbox.apply_configuration(action["release"], int(action["pool_size"]), actor_id="agent-mission")
-        except Exception as error:  # noqa: BLE001 - reported to humans, never hidden
-            return {"status": "MANUAL_INTERVENTION_REQUIRED", "error": f"{type(error).__name__}: {error}", "active_config": None}
+        def run() -> dict:
+            try:
+                return open_pull_request(code_box["code"], request["edits"], incident["id"], request["missionId"], f"Fix {incident['id']}: {incident['title']}", request["body"])
+            except Exception as error:  # noqa: BLE001 - reported to humans, never hidden
+                return {"status": "FAILED", "error": f"The pull request could not be opened: {type(error).__name__}."}
 
-    def measure(self) -> dict:
+        return self._through("github.open_pull_request", request["missionId"], request["edits"], run, target)
+
+    def apply_fix(self, action: dict, mission_id: str = "") -> dict:
+        def run() -> dict:
+            if self.sandbox is None:
+                return {"status": "FAILED", "error": "The Payment API sandbox is not available."}
+            try:
+                return self.sandbox.apply_configuration(action["release"], int(action["pool_size"]), actor_id="agent-mission")
+            except Exception as error:  # noqa: BLE001 - reported to humans, never hidden
+                return {"status": "MANUAL_INTERVENTION_REQUIRED", "error": f"{type(error).__name__}: {error}", "active_config": None}
+
+        return self._through("sandbox.apply_configuration", mission_id, action, run)
+
+    def measure(self, mission_id: str = "") -> dict:
         from .payment_local import read_recent_errors
 
-        try:
-            measurement = self.sandbox.run_workload(50)
-        except Exception as error:  # noqa: BLE001
-            return {"error": f"{type(error).__name__}: {error}"}
-        return {"measurement": measurement, "logLines": read_recent_errors(self.sandbox)}
+        def run() -> dict:
+            if self.sandbox is None:
+                return {"error": "The Payment API sandbox is not available."}
+            try:
+                measurement = self.sandbox.run_workload(50)
+            except Exception as error:  # noqa: BLE001
+                return {"error": f"{type(error).__name__}: {error}"}
+            return {"measurement": measurement, "logLines": read_recent_errors(self.sandbox)}
+
+        return self._through("sandbox.run_workload", mission_id, {"workload": 50}, run)
 
 
 def _pull_request_body(mission: dict, incident: dict, current: dict) -> str:
@@ -820,7 +997,7 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
     fix_approved = any(item["type"] == "fix" and item["decision"] == "approve" for item in current["decisions"])
     if mission["status"] == "Working" and sandbox and fix_approved and "sandboxChange" not in current:
         action = _sandbox_action(state, context["incident"])
-        result = _ask_tool(mission, f"apply:{mission['iteration']}", "apply_fix", action)
+        result = _ask_tool(mission, f"apply:{mission['iteration']}", "apply_fix", action, mission["id"])
         current["sandboxChange"] = {"requested": action, "status": result.get("status"), "active": result.get("active_config"), "error": result.get("error", "")}
         if result.get("status") == "SUCCEEDED":
             active = result["active_config"]
@@ -852,7 +1029,7 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
         step_index += 1
     if step_index >= len(STEPS) and sandbox:
         # Real sandbox: the outcome is MEASURED by re-running the calibrated workload.
-        measured = _ask_tool(mission, f"measure:{mission['iteration']}", "measure")
+        measured = _ask_tool(mission, f"measure:{mission['iteration']}", "measure", mission["id"])
         if "measurement" in measured:
             from .sandbox_records import describe, record_measurement
 
@@ -941,6 +1118,10 @@ def _advance_step(state: dict, mission_id: str, token: int, brain: MissionBrain,
         elif context.get("hasSource") and not context.get("canApplyFix"):
             recommendation = "Check carefully: the agents gave no exact code change for this proposal. Reject to have them retry, unless the fix is not a code change. " + recommendation
         _gate(mission, "fix", "Approve the fix for release", detail, recommendation, "approval:decide")
+        if sandbox:
+            mission["pendingGate"]["approvedHash"] = fingerprint(_sandbox_action(state, context["incident"]))
+        elif patch.get("deliverable"):
+            mission["pendingGate"]["approvedHash"] = fingerprint(patch["edits"])
         if patch.get("files") or patch.get("problems"):
             mission["pendingGate"]["patch"] = redact({"files": patch.get("files", []), "problems": patch.get("problems", []), "valid": bool(patch.get("valid")), "deliverable": bool(patch.get("deliverable")), "source": patch.get("source", "")})
         return False

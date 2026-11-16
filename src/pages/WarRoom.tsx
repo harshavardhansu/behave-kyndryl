@@ -50,7 +50,7 @@ import type { MissionView } from '../components/war-room/AgentCommandView'
 import { MissionPanel } from '../components/war-room/MissionPanel'
 import { PaymentSandboxPanel } from '../components/war-room/PaymentSandboxPanel'
 import { latestMission, missionTeam, ROLE_NAMES, specialistCount } from '../lib/missions'
-import { dateTime, elapsed, number, sla, time } from '../lib/format'
+import { dateTime, elapsed, measured, number, sla, time } from '../lib/format'
 import '../components/war-room/war-room-3d.css'
 import {
   Badge,
@@ -122,14 +122,15 @@ function ServiceGraphNode({ data, selected }: NodeProps<ServiceNode>) {
       <div className="service-node-metrics">
         <span>
           <Activity size={9} />
-          {number(service.latency)}
-          <small>ms</small>
+          {service.latency === null ? service.incidents.length : number(service.latency)}
+          <small>{service.latency === null ? ' open' : 'ms'}</small>
         </span>
         <span
           className={service.health === 'Critical' ? 'node-error-value' : ''}
+          title={service.healthBasis}
         >
-          {service.errorRate}
-          <small>% err</small>
+          {service.errorRate === null ? '' : service.errorRate}
+          <small>{service.errorRate === null ? 'not measured' : '% err'}</small>
         </span>
       </div>
     </div>
@@ -475,25 +476,26 @@ function ServiceInspector({ service }: { service: Service }) {
         <div>
           <span>p95 latency</span>
           <strong>
-            {number(service.latency)}
-            <small> ms</small>
+            {measured(service.latency)}
+            {service.latency !== null && <small> ms</small>}
           </strong>
         </div>
         <div>
           <span>Error rate</span>
           <strong>
-            {service.errorRate}
-            <small>%</small>
+            {measured(service.errorRate)}
+            {service.errorRate !== null && <small>%</small>}
           </strong>
         </div>
         <div>
           <span>Throughput</span>
           <strong>
-            {number(service.rps)}
-            <small> rps</small>
+            {measured(service.rps)}
+            {service.rps !== null && <small> rps</small>}
           </strong>
         </div>
       </div>
+      {service.healthBasis && <p className="service-basis">{service.healthBasis}</p>}
       <h4>Evidence sources</h4>
       <EvidenceLinks ids={service.evidence} />
       <h4>Open incidents</h4>
@@ -529,7 +531,7 @@ function ServiceInspector({ service }: { service: Service }) {
       )}
       <dl>
         <KeyValue label="Last observed">{time(service.observedAt)}</KeyValue>
-        <KeyValue label="Source">Synthetic topology snapshot</KeyValue>
+        <KeyValue label="Source">{service.healthBasis ? 'This workspace\'s incident and error records' : 'Synthetic topology snapshot'}</KeyValue>
       </dl>
     </div>
   )
@@ -773,7 +775,7 @@ function WarRoomWorkspace() {
               <strong>{incident.service}</strong>
               <ChevronMark />
             </button>
-            {affected && (
+            {affected && affected.latency !== null && affected.errorRate !== null && (
               <div className="context-metrics">
                 <div>
                   <span>Error rate</span>
@@ -788,6 +790,7 @@ function WarRoomWorkspace() {
                 </div>
               </div>
             )}
+            {affected && affected.latency === null && affected.healthBasis && <p className="service-basis">{affected.healthBasis}</p>}
           </section>
           <section>
             <span className="war-label">Detection</span>
@@ -1041,7 +1044,7 @@ function WarRoomWorkspace() {
         <section className="workspace-section">
           <SectionHeader
             title="Agent execution"
-            caption="Demo workflow / explicit control"
+            caption={data.workspaceKind === 'real' ? 'Agents of the current mission' : 'Demo workflow / explicit control'}
             actions={
               <Link
                 to="/agents"
@@ -1052,11 +1055,10 @@ function WarRoomWorkspace() {
               </Link>
             }
           />
-          <WorkflowControls incident={incident} />
+          {data.workspaceKind !== 'real' && <WorkflowControls incident={incident} />}
           <div className="mini-agent-list">
-            {data.agents
-              .filter((agent) => agent.incidentId === incident.id)
-              .slice(0, 5)
+            {(data.workspaceKind === 'real' ? missionAgents : data.agents.filter((agent) => agent.incidentId === incident.id))
+              .slice(0, 6)
               .map((agent) => (
                 <button
                   key={agent.id}
@@ -1066,6 +1068,7 @@ function WarRoomWorkspace() {
                   <Badge>{agent.status}</Badge>
                 </button>
               ))}
+            {data.workspaceKind === 'real' && !mission && <p className="muted">No agent mission has run for this incident yet.</p>}
           </div>
         </section>
         <section className="workspace-section">

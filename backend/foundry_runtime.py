@@ -22,6 +22,8 @@ from .ai_client import AIUnavailable, entra_credential
 from .domain import Settings, now
 from .foundry_agents import AGENTS_CATALOG, AgentDefinition, get_all_agents
 from .investigation_tools import TOOL_SPECS, InvestigationTools
+from .tool_gateway import allowed_tools
+from . import telemetry
 from .store import Store
 
 logger = logging.getLogger("behave.foundry")
@@ -73,11 +75,17 @@ def agent_tools(agent: AgentDefinition) -> list:
         return []
     from azure.ai.projects.models import FunctionTool
 
-    return [FunctionTool(name=spec["name"], description=spec["description"], parameters=spec["parameters"], strict=False) for spec in TOOL_SPECS]
+    return [FunctionTool(name=spec["name"], description=spec["description"], parameters=spec["parameters"], strict=False) for spec in role_tool_specs(agent.role)]
+
+
+def role_tool_specs(role: str) -> list[dict]:
+    """The read-only tools this agent may call: least privilege, as set in the Tool Gateway."""
+    allowed = allowed_tools(role)
+    return [spec for spec in TOOL_SPECS if allowed is None or spec["name"] in allowed]
 
 
 def _sha(agent: AgentDefinition, model: str) -> str:
-    tools = "" if agent.role == "orchestrator" else json.dumps(TOOL_SPECS, sort_keys=True)
+    tools = "" if agent.role == "orchestrator" else json.dumps(role_tool_specs(agent.role), sort_keys=True)
     return hashlib.sha256(f"{model}\n{agent_instructions(agent)}\n{tools}".encode()).hexdigest()[:16]
 
 
@@ -190,6 +198,20 @@ class FoundryAgentService:
     # -- invocation ------------------------------------------------------
 
     def run(self, role: str, payload: dict, schema_hint: dict, tools: InvestigationTools | None = None) -> tuple[str, int, int]:
+        """Run one Foundry agent, traced to Application Insights (metadata only: no prompt, code or log text)."""
+        entry = self.registry().get(role) or {}
+        with telemetry.span(f"invoke_agent {agent_name(role)}", **{
+            "gen_ai.operation.name": "invoke_agent", "gen_ai.system": "azure.ai.foundry", "gen_ai.agent.name": agent_name(role),
+            "gen_ai.agent.version": str(entry.get("version") or ""), "gen_ai.request.model": self.settings.azure_ai_model_deployment,
+            "behave.agent.role": role, "behave.incident.id": str((payload.get("ticket") or {}).get("id", "")),
+        }) as span:
+            text, tokens_in, tokens_out = self._run(role, payload, schema_hint, tools)
+            span.set_attribute("gen_ai.usage.input_tokens", tokens_in)
+            span.set_attribute("gen_ai.usage.output_tokens", tokens_out)
+            span.set_attribute("behave.agent.tool_calls", len(tools.trail) if tools is not None else 0)
+            return text, tokens_in, tokens_out
+
+    def _run(self, role: str, payload: dict, schema_hint: dict, tools: InvestigationTools | None = None) -> tuple[str, int, int]:
         """Call one Foundry agent. Returns (output text, input tokens, output tokens).
 
         With ``tools`` the agent may call the read-only investigation tools; each call is
@@ -216,7 +238,10 @@ class FoundryAgentService:
                                 arguments = json.loads(call.arguments or "{}")
                             except ValueError:
                                 arguments = {}
-                            results.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(tools.call(call.name, arguments))})
+                            with telemetry.span(f"execute_tool {call.name}", **{"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": call.name, "behave.agent.role": role}) as tool_span:
+                                output = tools.call(call.name, arguments)
+                                tool_span.set_attribute("behave.tool.ok", "error" not in output)
+                            results.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(output)})
                         response = api.responses.create(input=results, previous_response_id=response.id, extra_body=reference)
                         used = _usage(response)
                         tokens_in, tokens_out = tokens_in + used[0], tokens_out + used[1]

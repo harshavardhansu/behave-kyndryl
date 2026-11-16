@@ -230,6 +230,9 @@ export function Knowledge() {
                   <Badge>
                     {selected.approved ? 'Approved' : 'Unapproved draft'}
                   </Badge>
+                  {selected.type === 'Incident resolution' && (
+                    <Badge tone="outline">{selected.verified ? 'Fix verified' : 'Fix not yet verified'}</Badge>
+                  )}
                 </div>
                 <h2>{selected.title}</h2>
                 <p>
@@ -266,6 +269,13 @@ export function Knowledge() {
                 <h3>Document provenance</h3>
                 <dl>
                   <KeyValue label="Source">{selected.source}</KeyValue>
+                  {selected.type === 'Incident resolution' && (
+                    <KeyValue label="Used by agents">
+                      {selected.approved
+                        ? 'Yes: indexed in the knowledge search and matched to new incidents by error fingerprint'
+                        : 'Not yet: a different person must approve it first'}
+                    </KeyValue>
+                  )}
                   <KeyValue label="Last reviewed">
                     {dateTime(selected.reviewedAt)}
                   </KeyValue>
@@ -449,9 +459,9 @@ export function Knowledge() {
               />
             </label>
             <Notice title="Resolution verification required">
-              Incident reports can only become approved knowledge when linked
-              incidents are closed and recovery evidence is recorded. Synthetic
-              outcomes remain demo-only.
+              {data.workspaceKind === 'real'
+                ? 'A resolution written by an agent mission can be approved by anyone except the person who started that mission. Once approved, the agents find it for later incidents. It is marked verified only when the fix was measured or a person recorded the result.'
+                : 'Incident reports can only become approved knowledge when linked incidents are closed and recovery evidence is recorded. Synthetic outcomes remain demo-only.'}
             </Notice>
             {error && (
               <Notice title="Review not recorded" tone="error">

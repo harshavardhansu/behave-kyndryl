@@ -24,7 +24,7 @@ import {
   Timer,
   TriangleAlert,
 } from 'lucide-react'
-import { useWorkspace } from '../context'
+import { useRealWorkspace, useWorkspace } from '../context'
 import { closedStatuses, dateTime, severities, sla } from '../lib/format'
 import {
   Badge,
@@ -48,6 +48,7 @@ interface MetricDefinition {
 
 export function Reports() {
   const { data, environment, exportReport } = useWorkspace()
+  const real = useRealWorkspace()
   const [referenceTime] = useState(Date.now)
   const [tab, setTab] = useState('Operational analytics')
   const [service, setService] = useState('All services')
@@ -81,9 +82,14 @@ export function Reports() {
     0
   )
   const failedTests = tests.reduce((total, test) => total + test.failed, 0)
-  const tasks = data.agents.filter((agent) => ids.has(agent.incidentId))
+  // Real workspace: the agents of every mission iteration. Demo: the scripted workflow tasks.
+  const tasks: { status: string }[] = real
+    ? data.missions
+        .filter((mission) => ids.has(mission.incidentId))
+        .flatMap((mission) => mission.iterations.flatMap((iteration) => iteration.team))
+    : data.agents.filter((agent) => ids.has(agent.incidentId))
   const terminalTasks = tasks.filter((task) =>
-    ['Completed', 'Failed', 'Cancelled'].includes(task.status)
+    ['Completed', 'Failed', 'Cancelled', 'Not reached'].includes(task.status)
   )
   const completedTasks = terminalTasks.filter(
     (task) => task.status === 'Completed'
@@ -91,7 +97,18 @@ export function Reports() {
   const withEvidence = incidents.filter((incident) =>
     data.evidence.some((record) => record.incidentId === incident.id)
   ).length
+  const reportedAt = (incidentId: string) =>
+    data.audit.find((event) => event.resource === incidentId && event.action === 'Incident created')?.timestamp
   const acknowledgements = incidents.flatMap((incident) => {
+    if (real) {
+      // Real workspace: from the moment the incident was reported here to the start of its first agent mission.
+      const reported = reportedAt(incident.id)
+      const first = data.missions
+        .filter((mission) => mission.incidentId === incident.id)
+        .map((mission) => mission.createdAt)
+        .sort()[0]
+      return reported && first ? [Math.max(0, new Date(first).getTime() - new Date(reported).getTime()) / 60_000] : []
+    }
     const acknowledgement = data.audit.find(
       (event) =>
         event.correlationId === incident.id &&
@@ -106,6 +123,11 @@ export function Reports() {
       : []
   })
   const resolutions = incidents.flatMap((incident) => {
+    if (real) {
+      const reported = reportedAt(incident.id)
+      const recovered = incident.recovery?.timestamp
+      return reported && recovered ? [Math.max(0, new Date(recovered).getTime() - new Date(reported).getTime()) / 60_000] : []
+    }
     const closure = data.audit.find(
       (event) =>
         event.correlationId === incident.id && event.action === 'verify'
@@ -118,6 +140,14 @@ export function Reports() {
         ]
       : []
   })
+  const scopedErrors = (data.errors ?? []).filter((issue) => issue.incidentIds.some((id) => ids.has(id)))
+  const gatewayLog = (data.gateway ?? []).filter((entry) => ids.has(entry.incidentId))
+  const missionDurations = data.missions
+    .filter((mission) => ids.has(mission.incidentId) && ['Resolved', 'Solution ready'].includes(mission.status))
+    .flatMap((mission) => {
+      const end = mission.resolution?.at ?? mission.handoff?.at
+      return end ? [Math.max(0, new Date(end).getTime() - new Date(mission.createdAt).getTime()) / 60_000] : []
+    })
   const decisions = data.approvals.filter(
     (approval) => ids.has(approval.incidentId) && approval.decidedAt
   )
@@ -135,9 +165,10 @@ export function Reports() {
     {
       metric: 'Mean time to acknowledge',
       value: average(acknowledgements),
-      denominator: `${acknowledgements.length} acknowledged incidents`,
-      definition:
-        'Average detection-to-human-acknowledgement duration where both timestamps exist.',
+      denominator: real ? `${acknowledgements.length} incidents with an agent mission` : `${acknowledgements.length} acknowledged incidents`,
+      definition: real
+        ? 'Average time from an incident being reported here to the start of its first agent mission.'
+        : 'Average detection-to-human-acknowledgement duration where both timestamps exist.',
       source: 'Incident & audit records',
     },
     {
@@ -146,13 +177,13 @@ export function Reports() {
       denominator: 'No independently recorded failure-onset timestamps',
       definition:
         'Failure onset to detection; unavailable without a verified onset time.',
-      source: 'Not measurable in this fixture',
+      source: real ? 'Not measurable: no monitoring connector' : 'Not measurable in this fixture',
     },
     {
       metric: 'Mean time to resolve',
       value: average(resolutions),
       denominator: `${resolutions.length} verified recoveries`,
-      definition: 'Average incident detection-to-recorded-recovery duration.',
+      definition: real ? 'Average time from an incident being reported here to its recorded recovery (measured, or stated by a person).' : 'Average incident detection-to-recorded-recovery duration.',
       source: 'Recovery audit records',
     },
     {
@@ -186,15 +217,16 @@ export function Reports() {
       denominator: `${failedTests} failed / ${totalTests} non-skipped checks`,
       definition:
         'Failed checks divided by passed plus failed checks across selected recorded runs.',
-      source: 'Synthetic or manually recorded test runs',
+      source: real ? 'Measured sandbox runs and results recorded by people' : 'Synthetic or manually recorded test runs',
     },
     {
       metric: 'Agent task success rate',
       value: ratio(completedTasks, terminalTasks.length),
       denominator: `${completedTasks} completed / ${terminalTasks.length} terminal tasks`,
-      definition:
-        'Completed tasks divided by completed, failed and cancelled tasks. No model evaluation is implied.',
-      source: 'Synthetic workflow state',
+      definition: real
+        ? 'Agents that completed their step divided by all agents whose step ended (completed, failed, cancelled or not reached). It says an answer was produced, not that it was right.'
+        : 'Completed tasks divided by completed, failed and cancelled tasks. No model evaluation is implied.',
+      source: real ? 'Agent mission records' : 'Synthetic workflow state',
     },
     {
       metric: 'Human approval wait time',
@@ -229,13 +261,21 @@ export function Reports() {
         'Current reopened incidents divided by records in scope; not a historical recurrence measure.',
       source: 'Current incident states',
     },
-    {
-      metric: 'Incident recurrence',
-      value: '--',
-      denominator: 'No validated recurrence groups',
-      definition: 'Repeated incidents with a validated common failure mode.',
-      source: 'Not measured',
-    },
+    real
+      ? {
+          metric: 'Recurring errors',
+          value: ratio(scopedErrors.filter((issue) => issue.count > 1).length, scopedErrors.length),
+          denominator: `${scopedErrors.filter((issue) => issue.count > 1).length} seen more than once / ${scopedErrors.length} error groups`,
+          definition: 'Error groups (same fingerprint) seen more than once in uploaded logs, divided by all error groups in scope.',
+          source: 'Error tracking records',
+        }
+      : {
+          metric: 'Incident recurrence',
+          value: '--',
+          denominator: 'No validated recurrence groups',
+          definition: 'Repeated incidents with a validated common failure mode.',
+          source: 'Not measured',
+        },
     {
       metric: 'Change failure rate',
       value: '--',
@@ -244,28 +284,55 @@ export function Reports() {
         'Changes causing a validated incident or rollback divided by eligible deployments.',
       source: 'No connected deployment provider',
     },
-    {
-      metric: 'Rollback frequency',
-      value: String(
-        data.deployments.filter(
-          (deployment) =>
-            deployment.status === 'Simulated rollback' &&
-            deployment.environment === environment
-        ).length
-      ),
-      denominator: 'Recorded demo rollback events in environment',
-      definition:
-        'Count of explicit synthetic rollback records; not a production frequency.',
-      source: 'Synthetic deployment records',
-    },
-    {
-      metric: 'Investigation duration',
-      value: '--',
-      denominator: 'No completed real investigation cohort',
-      definition:
-        'Duration from authorized investigation start to human-reviewed assessment.',
-      source: 'Not measured',
-    },
+    real
+      ? {
+          metric: 'Gateway refusals',
+          value: String(gatewayLog.filter((entry) => entry.status === 'DENIED').length),
+          denominator: `${gatewayLog.length} outside actions requested by agents`,
+          definition: 'Requests the Tool Gateway refused (no approval, wrong approver, changed content, wrong target or repeated).',
+          source: 'Tool Gateway log',
+        }
+      : {
+          metric: 'Rollback frequency',
+          value: String(
+            data.deployments.filter(
+              (deployment) =>
+                deployment.status === 'Simulated rollback' &&
+                deployment.environment === environment
+            ).length
+          ),
+          denominator: 'Recorded demo rollback events in environment',
+          definition:
+            'Count of explicit synthetic rollback records; not a production frequency.',
+          source: 'Synthetic deployment records',
+        },
+    real
+      ? {
+          metric: 'Investigation duration',
+          value: average(missionDurations),
+          denominator: `${missionDurations.length} finished agent missions`,
+          definition: 'Average time from a mission starting to a person confirming it resolved or handing the solution over (includes waiting for human decisions).',
+          source: 'Agent mission records',
+        }
+      : {
+          metric: 'Investigation duration',
+          value: '--',
+          denominator: 'No completed real investigation cohort',
+          definition:
+            'Duration from authorized investigation start to human-reviewed assessment.',
+          source: 'Not measured',
+        },
+    ...(real
+      ? [
+          {
+            metric: 'Knowledge reuse',
+            value: String(data.knowledge.filter((record) => record.type === 'Incident resolution' && record.approved).length),
+            denominator: `${data.knowledge.filter((record) => record.type === 'Incident resolution').length} resolution records written by missions`,
+            definition: 'Resolution records written by agent missions that a second person approved, so agents find them for later incidents.',
+            source: 'Knowledge base',
+          },
+        ]
+      : []),
   ]
   const metricColumns: ColumnDef<MetricDefinition>[] = [
     {
@@ -381,7 +448,7 @@ export function Reports() {
             <Metric
               label="Mean time to acknowledge"
               value={average(acknowledgements)}
-              detail={`${acknowledgements.length} eligible records / demo data`}
+              detail={real ? `${acknowledgements.length} incidents / report to first mission` : `${acknowledgements.length} eligible records / demo data`}
               icon={Timer}
             />
             <Metric
@@ -454,13 +521,13 @@ export function Reports() {
             </section>
             <section className="workspace-section">
               <SectionHeader
-                title="Resolution trend fixture"
-                caption="Fixed historical fixture / 7 days / all environments"
+                title={real ? 'Opened and resolved per day' : 'Resolution trend fixture'}
+                caption={real ? 'Counted from this workspace\'s incidents and audit trail / 7 days / all environments' : 'Fixed historical fixture / 7 days / all environments'}
               />
               <div
                 className="report-chart"
                 role="img"
-                aria-label="Historical synthetic resolution trend"
+                aria-label={real ? 'Incidents opened and resolved per day' : 'Historical synthetic resolution trend'}
               >
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -498,11 +565,19 @@ export function Reports() {
               </div>
             </section>
           </div>
-          <Notice title="Demo analytics, not production results">
-            Values are calculated from synthetic and user-entered records.
-            Missing measurements remain unreported. The historical trend fixture
-            is independent of the incident filters.
-          </Notice>
+          {real ? (
+            <Notice title="How these numbers are produced">
+              Every value is calculated from this workspace's own records: incidents, agent missions, human decisions, the Tool Gateway
+              log, uploaded logs and recorded results. A metric with nothing to measure shows "--" instead of an estimate. The 7-day
+              trend counts all environments.
+            </Notice>
+          ) : (
+            <Notice title="Demo analytics, not production results">
+              Values are calculated from synthetic and user-entered records.
+              Missing measurements remain unreported. The historical trend fixture
+              is independent of the incident filters.
+            </Notice>
+          )}
           <div className="report-links">
             <Link to="/incidents">
               <TriangleAlert size={18} />

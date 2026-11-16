@@ -9,12 +9,13 @@ outcome review's recommendation, prints where every finding came from and how ma
 calls each agent made, and saves the PDF report next to the database. It makes real AI calls.
 """
 
+import os
 import sys
 import time
 
 import httpx
 
-BASE = "http://127.0.0.1:8000/api/v1"
+BASE = os.getenv("BEHAVE_BASE", "http://127.0.0.1:8000") + "/api/v1"
 
 
 def main(incident: str = "INC-1043") -> int:

@@ -33,10 +33,11 @@ import {
   Zap,
 } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { useWorkspace } from '../context'
+import { useRealWorkspace, useWorkspace } from '../context'
 import {
   closedStatuses,
   dateTime,
+  minutes,
   severityRank,
   sla,
   time,
@@ -66,6 +67,8 @@ export function Overview() {
     refreshing,
   } = useWorkspace()
   const navigate = useNavigate()
+  const real = useRealWorkspace()
+  const metrics = data.metrics
   const [service, setService] = useState('All services')
   const [period, setPeriod] = useState('24 hours')
   const cutoff =
@@ -99,9 +102,21 @@ export function Overview() {
     value: services.filter((record) => record.health === name).length,
   }))
   const attention = [...critical, ...open][0]
-  const tasks = data.agents.filter((agent) =>
-    incidents.some((incident) => incident.id === agent.incidentId)
-  )
+  // Real workspace: the agents of the latest iteration of each agent mission. Demo: the scripted workflow tasks.
+  const tasks = real
+    ? data.missions
+        .filter((mission) => incidents.some((incident) => incident.id === mission.incidentId))
+        .flatMap((mission) =>
+          (mission.iterations[mission.iterations.length - 1]?.team ?? []).map((member) => ({
+            id: member.id,
+            name: member.name,
+            status: member.status as string,
+            incidentId: mission.incidentId,
+          }))
+        )
+    : data.agents.filter((agent) =>
+        incidents.some((incident) => incident.id === agent.incidentId)
+      )
   const completedTasks = tasks.filter(
     (task) => task.status === 'Completed'
   ).length
@@ -322,7 +337,7 @@ export function Overview() {
           <div
             className="chart-area"
             role="img"
-            aria-label="Synthetic incident trend over seven days"
+            aria-label={real ? 'Incidents opened per day over seven days' : 'Synthetic incident trend over seven days'}
           >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -389,7 +404,7 @@ export function Overview() {
                   0
                 )}
               </span>{' '}
-              resolved in historical fixture
+              {real ? 'resolved in the last 7 days (from this workspace\'s records)' : 'resolved in historical fixture'}
             </span>
             <Link to="/reports">
               View analytics
@@ -469,8 +484,8 @@ export function Overview() {
                     className={`health-state ${record.health.toLowerCase()}`}
                   />
                   <span>{record.name}</span>
-                  <span className="mono">
-                    {record.latency.toLocaleString()} ms
+                  <span className="mono" title={record.healthBasis}>
+                    {record.latency === null ? `${record.incidents.length} open` : `${record.latency.toLocaleString()} ms`}
                   </span>
                   <ChevronRight size={13} />
                 </button>
@@ -508,7 +523,7 @@ export function Overview() {
         <section className="workspace-section agent-pulse">
           <SectionHeader
             title="Agent activity"
-            caption="Bounded synthetic workflow"
+            caption={real ? 'Agents of the current missions' : 'Bounded synthetic workflow'}
             actions={
               <Link
                 className="icon-link"
@@ -543,7 +558,7 @@ export function Overview() {
                 key={agent.id}
                 onClick={() => {
                   selectIncident(agent.incidentId)
-                  navigate(`/agents?task=${agent.id}`)
+                  navigate(real ? '/war-room' : `/agents?task=${agent.id}`)
                 }}
               >
                 <span className="agent-icon">
@@ -561,7 +576,7 @@ export function Overview() {
             {!tasks.length && (
               <EmptyState
                 title="No tasks in scope"
-                description="No agent workflow is linked to these incident records."
+                description={real ? 'No agent mission has run for the incidents in scope yet.' : 'No agent workflow is linked to these incident records.'}
               />
             )}
           </div>
@@ -597,25 +612,33 @@ export function Overview() {
             <Timer size={15} />
             MTTA
           </span>
-          <strong>
-            {incidents.some((incident) => incident.id === 'INC-1042')
-              ? '2m'
-              : '--'}
-            <small>
-              {' '}
+          {real ? (
+            <strong title={metrics?.basis}>
+              {minutes(metrics?.minutesToInvestigation)}
+              <small> report to mission start / {metrics?.investigatedIncidents ?? 0} incidents</small>
+            </strong>
+          ) : (
+            <strong>
               {incidents.some((incident) => incident.id === 'INC-1042')
-                ? '1 measured acknowledgement'
-                : 'not measured'}
-            </small>
-          </strong>
+                ? '2m'
+                : '--'}
+              <small>
+                {' '}
+                {incidents.some((incident) => incident.id === 'INC-1042')
+                  ? '1 measured acknowledgement'
+                  : 'not measured'}
+              </small>
+            </strong>
+          )}
         </div>
         <div>
           <span>
             <Clock3 size={15} />
             MTTR
           </span>
-          <strong>
-            --<small>no complete measured cohort</small>
+          <strong title={metrics?.basis}>
+            {real ? minutes(metrics?.minutesToResolution) : '--'}
+            <small>{real ? ` report to recorded recovery / ${metrics?.resolvedIncidents ?? 0} resolved` : 'no complete measured cohort'}</small>
           </strong>
         </div>
         <div>
@@ -624,7 +647,8 @@ export function Overview() {
             AI-assisted resolution
           </span>
           <strong>
-            --<small>not measured in demo</small>
+            {real && metrics?.resolvedIncidents ? `${metrics.resolvedWithAgents}/${metrics.resolvedIncidents}` : '--'}
+            <small>{real ? ` resolved after an agent mission / ${metrics?.measuredResolutions ?? 0} measured` : 'not measured in demo'}</small>
           </strong>
         </div>
       </div>
@@ -696,7 +720,7 @@ export function Overview() {
         <section className="workspace-section">
           <SectionHeader
             title="Risk watch"
-            caption="SLA & security / synthetic findings"
+            caption={real ? 'SLA & security findings from repository scans' : 'SLA & security / synthetic findings'}
             actions={
               <Link
                 to="/security"

@@ -13,7 +13,7 @@ import {
   Play,
   ShieldCheck,
 } from 'lucide-react'
-import { useIncident, useWorkspace } from '../context'
+import { useIncident, useRealWorkspace, useWorkspace } from '../context'
 import { post } from '../lib/api'
 import type { TestRun } from '../types'
 import { dateTime, errorMessage } from '../lib/format'
@@ -59,8 +59,15 @@ const categories = [
   'Manually recorded',
 ]
 
+/** Where a run's numbers come from. */
+function provenance(run: TestRun) {
+  if (run.synthetic) return 'Synthetic fixture'
+  return run.category.includes('measured') ? 'Executed and measured' : 'Recorded by a person'
+}
+
 export function Testing() {
   const { data, can, setActionDialog, refresh, notify } = useWorkspace()
+  const real = useRealWorkspace()
   const incident = useIncident()
   const [params] = useSearchParams()
   const [tab, setTab] = useState('Test runs')
@@ -79,7 +86,7 @@ export function Testing() {
   })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  if (!incident) return <EmptyState title="No incident selected" />
+  if (!incident) return <EmptyState title="No incident selected" description={real ? 'Create an incident first: test results are recorded against an incident.' : undefined} />
   const tests = data.tests
     .filter((test) => test.incidentId === incident.id)
     .sort((first, second) => second.timestamp.localeCompare(first.timestamp))
@@ -104,7 +111,7 @@ export function Testing() {
           <span className="mono record-id">{row.original.id}</span>
           <strong>{row.original.suite}</strong>
           <small>
-            {row.original.synthetic ? 'Synthetic fixture' : 'Manually recorded'}
+            {provenance(row.original)}
           </small>
         </div>
       ),
@@ -182,20 +189,22 @@ export function Testing() {
               <FilePlus2 size={15} />
               Record test results
             </Button>
-            <Button
-              variant="primary"
-              disabled={!canValidate}
-              title="A proposed fix and validation permission are required"
-              onClick={() =>
-                setActionDialog({
-                  incidentId: incident.id,
-                  action: 'run-validation',
-                })
-              }
-            >
-              <Play size={17} />
-              Replay validation
-            </Button>
+            {!real && (
+              <Button
+                variant="primary"
+                disabled={!canValidate}
+                title="A proposed fix and validation permission are required"
+                onClick={() =>
+                  setActionDialog({
+                    incidentId: incident.id,
+                    action: 'run-validation',
+                  })
+                }
+              >
+                <Play size={17} />
+                Replay validation
+              </Button>
+            )}
           </>
         }
       />
@@ -207,7 +216,7 @@ export function Testing() {
         <Metric
           label="Total recorded checks"
           value={passed + failed + skipped}
-          detail={`${tests.length} synthetic or recorded runs`}
+          detail={real ? `${tests.length} measured or recorded runs` : `${tests.length} synthetic or recorded runs`}
           icon={FlaskConical}
         />
         <Metric
@@ -272,9 +281,9 @@ export function Testing() {
             }
           />
           <Notice title="No test execution is implied" tone="warning">
-            Demo replay loads predefined synthetic results. Manually entered
-            results retain their source reference. Executing code requires an
-            isolated, configured runner with resource and network limits.
+            {real
+              ? 'Runs on this page are either measured (the calibrated workload executed against the Payment API sandbox through the Tool Gateway) or recorded by a person from their own pipeline, with the source they gave. No uploaded code is executed here: an isolated test runner is not connected.'
+              : 'Demo replay loads predefined synthetic results. Manually entered results retain their source reference. Executing code requires an isolated, configured runner with resource and network limits.'}
           </Notice>
         </>
       )}
@@ -327,7 +336,7 @@ export function Testing() {
                 Required for exact proposed commit
               </KeyValue>
               <KeyValue label="Performance">
-                p95 below 500 ms in checkout fixture
+                {real ? 'p95 below 500 ms and error rate below 1% (sandbox workload)' : 'p95 below 500 ms in checkout fixture'}
               </KeyValue>
               <KeyValue label="Code review">Separate human approval</KeyValue>
               <KeyValue label="Production gate">
@@ -345,7 +354,7 @@ export function Testing() {
         <>
           <SectionHeader
             title="Failed case excerpts"
-            caption="Partial synthetic case details / full counts retained on the run"
+            caption={real ? 'Failed checks of measured runs / full counts retained on the run' : 'Partial synthetic case details / full counts retained on the run'}
           />
           <div className="failure-list">
             {tests.flatMap((test) =>
@@ -388,7 +397,7 @@ export function Testing() {
             <div className="detail-badges">
               <Badge>{selected.status}</Badge>
               <Badge tone="outline">
-                {selected.synthetic ? 'Synthetic result' : 'Manually recorded'}
+                {provenance(selected)}
               </Badge>
             </div>
             <Notice title="Result provenance">{selected.source}</Notice>
@@ -402,7 +411,7 @@ export function Testing() {
               </KeyValue>
               <KeyValue label="Duration">
                 {selected.duration}s{' '}
-                {selected.synthetic ? '(fixture value)' : '(reported)'}
+                {selected.synthetic ? '(fixture value)' : selected.category.includes('measured') ? '(measured)' : '(reported)'}
               </KeyValue>
               <KeyValue label="Pass / fail / skip">
                 {selected.passed} / {selected.failed} / {selected.skipped}

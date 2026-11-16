@@ -247,11 +247,12 @@ function DemoResetButton() {
   const { data, can, refresh, notify } = useWorkspace()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const real = data.workspaceKind === 'real'
   if (data.mode !== 'demo' || !can('admin:write')) return null
   async function reset() {
     setBusy(true)
     try {
-      const result = await post<{ message: string }>('/admin/demo-reset', {})
+      const result = await post<{ message: string }>('/admin/demo-reset', real ? { mode: 'real' } : {})
       await refresh()
       notify(result.message)
       setOpen(false)
@@ -264,17 +265,18 @@ function DemoResetButton() {
   return (
     <>
       <Button onClick={() => setOpen(true)}>
-        <DatabaseBackup size={15} /> Reset demo data
+        <DatabaseBackup size={15} /> {real ? 'Clear all records' : 'Reset demo data'}
       </Button>
-      <Modal open={open} onClose={() => !busy && setOpen(false)} title="Reset demo data" description="Restore the realistic demo stories for a fresh demo run.">
+      <Modal open={open} onClose={() => !busy && setOpen(false)} title={real ? 'Clear all records' : 'Reset demo data'} description={real ? 'Start again with an empty workspace.' : 'Restore the realistic demo stories for a fresh demo run.'}>
         <Notice title="What happens">
-          Your current workspace data (incidents, missions, evidence, audit trail) is backed up to data/backups/ and replaced with
-          the original demo stories. You stay signed in. The Payment API sandbox is stopped.
+          {real
+            ? 'Every record in this workspace (incidents, missions, evidence, errors, knowledge, audit trail) is backed up next to the database and then removed. The workspace starts empty again; no demonstration data is added. You stay signed in.'
+            : 'Your current workspace data (incidents, missions, evidence, audit trail) is backed up to data/backups/ and replaced with the original demo stories. You stay signed in. The Payment API sandbox is stopped.'}
         </Notice>
         <div className="modal-footer">
           <Button onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
           <Button variant="primary" busy={busy} onClick={() => void reset()}>
-            <DatabaseBackup size={15} /> Back up and reset
+            <DatabaseBackup size={15} /> {real ? 'Back up and clear' : 'Back up and reset'}
           </Button>
         </div>
       </Modal>
@@ -284,6 +286,7 @@ function DemoResetButton() {
 
 export function Administration() {
   const { data, session, can, refresh } = useWorkspace()
+  const real = data.workspaceKind === 'real'
   const [tab, setTab] = useState('Integrations')
   const [category, setCategory] = useState('All categories')
   const [selectedIntegration, setSelectedIntegration] =
@@ -384,7 +387,7 @@ export function Administration() {
         <>
           <SectionHeader
             title="Integration registry"
-            caption="Configured boundaries / No connection is implied by a saved setting"
+            caption={real ? 'Each status below was checked live against the service, not read from a saved setting' : 'Configured boundaries / No connection is implied by a saved setting'}
             actions={
               <Select
                 label="Integration category"
@@ -423,9 +426,11 @@ export function Administration() {
                     </div>
                     <Badge
                       tone={
-                        integration.status === 'Demo source'
+                        ['Demo source', 'Connected', 'Active'].includes(integration.status)
                           ? 'success'
-                          : 'outline'
+                          : integration.status === 'Error'
+                            ? 'critical'
+                            : 'outline'
                       }
                     >
                       {integration.status}
@@ -442,10 +447,10 @@ export function Administration() {
       )}
       {tab === 'Users & access' && (
         <>
-          <Notice title="Local demo identity directory">
-            Production identity must come from validated Entra app roles. This
-            interface cannot create production users or grant external
-            permissions. Demo personas are selected from the profile menu.
+          <Notice title={real ? 'Roles in this deployment' : 'Local demo identity directory'}>
+            {real
+              ? 'Access to the site itself is controlled by Microsoft Entra sign-in. Inside it, people act in one of these roles, chosen from the profile menu; every decision is recorded under that role. Mapping each Entra account to a fixed role (app roles) is not set up in this deployment.'
+              : 'Production identity must come from validated Entra app roles. This interface cannot create production users or grant external permissions. Demo personas are selected from the profile menu.'}
           </Notice>
           <div className="section-spacer" />
           <SectionHeader
@@ -493,8 +498,8 @@ export function Administration() {
         <div className="admin-workspace-grid">
           <section>
             <SectionHeader
-              title="Northstar Commerce"
-              caption="Local workspace / Single-tenant demo"
+              title={data.workspace}
+              caption={real ? 'Single workspace / real records only' : 'Local workspace / Single-tenant demo'}
             />
             <dl>
               <KeyValue label="Workspace mode">{data.mode}</KeyValue>
@@ -504,7 +509,7 @@ export function Administration() {
                 SQLAlchemy / configured database
               </KeyValue>
               <KeyValue label="AI execution">
-                Synthetic by default / no automatic model invocation
+                {real ? (data.aiMode ?? 'Not configured') : 'Synthetic by default / no automatic model invocation'}
               </KeyValue>
               <KeyValue label="Available environments">
                 Development, Staging, Production
@@ -563,7 +568,7 @@ export function Administration() {
         <>
           <SectionHeader
             title="Declared service inventory"
-            caption="15-service synthetic checkout architecture / snapshot only"
+            caption={real ? 'Applications that have incidents or a connected repository in this workspace' : '15-service synthetic checkout architecture / snapshot only'}
           />
           <DataTable
             data={data.services}
@@ -575,9 +580,9 @@ export function Administration() {
             pageSize={12}
           />
           <Notice title="Catalog source">
-            This inventory is the supplied synthetic topology. A real catalog
-            adapter must preserve source ownership, environment and evidence
-            timestamps.
+            {real
+              ? 'An application appears here when an incident is raised on it or a repository is connected for it. Health is derived from its open incidents and errors; no monitoring system feeds this list.'
+              : 'This inventory is the supplied synthetic topology. A real catalog adapter must preserve source ownership, environment and evidence timestamps.'}
           </Notice>
         </>
       )}
@@ -711,7 +716,7 @@ export function Administration() {
               {!selectedIntegration.required.length && (
                 <EmptyState
                   title="No external configuration required"
-                  description="The synthetic fixture is available from the local database."
+                  description={real ? 'Nothing to configure for this item.' : 'The synthetic fixture is available from the local database.'}
                 />
               )}
             </div>
@@ -720,10 +725,11 @@ export function Administration() {
               credentials, access tokens or private keys are requested or stored
               by these controls.
             </Notice>
-            {selectedIntegration.id !== 'demo' && (
-              <Notice title="Connection not verified">
-                This adapter is not currently connected. Setup details are
-                configuration guidance, not a successful connection test.
+            {selectedIntegration.id !== 'demo' && !['Connected', 'Active', 'Built-in', 'Built-in rules'].includes(selectedIntegration.status) && (
+              <Notice title={real ? `Status: ${selectedIntegration.status}` : 'Connection not verified'}>
+                {real
+                  ? 'This item is not connected in this deployment. The settings above are what it needs.'
+                  : 'This adapter is not currently connected. Setup details are configuration guidance, not a successful connection test.'}
               </Notice>
             )}
             <div className="release-actions">

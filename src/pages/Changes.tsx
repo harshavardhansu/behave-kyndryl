@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react'
-import { useIncident, useWorkspace } from '../context'
+import { useIncident, useRealWorkspace, useWorkspace } from '../context'
 import type { Approval, Change, Deployment } from '../types'
 import { dateTime } from '../lib/format'
 import {
@@ -50,6 +50,7 @@ export function Changes() {
     setActionDialog,
   } = useWorkspace()
   const incident = useIncident()
+  const real = useRealWorkspace()
   const [params] = useSearchParams()
   const [tab, setTab] = useState(
     params.get('view') === 'Approvals' ? 'Approvals' : 'Change requests'
@@ -318,14 +319,14 @@ export function Changes() {
                     </Link>
                     <h3 className="detail-section-title">Outstanding risks</h3>
                     <p className="body-copy">
-                      Validate aggregate connection capacity, equivalent-load
-                      behavior and rollback readiness. Static evidence alone
-                      cannot establish that the proposed change is safe.
+                      {real
+                        ? 'This change was proposed by the Remediation agent and checked against the current files only. It has not been run or tested by this system: review the diff, read the risk and security findings in the mission, and let your own pipeline test it.'
+                        : 'Validate aggregate connection capacity, equivalent-load behavior and rollback readiness. Static evidence alone cannot establish that the proposed change is safe.'}
                     </p>
                   </section>
                   <dl>
                     <KeyValue label="Risk assessment">
-                      {change.risk} / synthetic scenario
+                      {real ? change.risk : `${change.risk} / synthetic scenario`}
                     </KeyValue>
                     <KeyValue label="Owner">{change.owner}</KeyValue>
                     <KeyValue label="Changed files">
@@ -353,11 +354,21 @@ export function Changes() {
                       </li>
                     ))}
                   </ol>
-                  <Notice title="Deployment provider is not configured">
-                    Only the local, explicitly authorized simulation is
-                    available. Behave Kyndryl does not hold a production deployment
-                    identity.
-                  </Notice>
+                  {real ? (
+                    <Notice title="How an approved change is delivered">
+                      Behave Kyndryl does not deploy to anyone's environment. After a separate human approval, the Tool Gateway either opens
+                      the exact change as a pull request on a new branch (repositories with pull requests on) or applies it to the isolated
+                      Payment API sandbox and measures the result. Anything else is applied by the owning team, who then record the verification.
+                      {change.pullRequest ? ' Pull request: ' : ''}
+                      {change.pullRequest && <a href={change.pullRequest} target="_blank" rel="noreferrer">{change.pullRequest}</a>}
+                    </Notice>
+                  ) : (
+                    <Notice title="Deployment provider is not configured">
+                      Only the local, explicitly authorized simulation is
+                      available. Behave Kyndryl does not hold a production deployment
+                      identity.
+                    </Notice>
+                  )}
                 </>
               )}
               {detailTab === 'Rollback plan' && (
@@ -369,7 +380,7 @@ export function Changes() {
                       <p>{change.rollback}</p>
                     </div>
                   </div>
-                  {incident && (
+                  {incident && !real && (
                     <Button
                       disabled={
                         !can('change:deploy', incident.environment) ||
@@ -440,7 +451,7 @@ export function Changes() {
               <div>
                 <h2>
                   {ready && approval?.status === 'Approved'
-                    ? 'Approved for a controlled demo release'
+                    ? real ? 'Approved by a second person' : 'Approved for a controlled demo release'
                     : 'Release authorization is not complete'}
                 </h2>
                 <p>
@@ -471,27 +482,36 @@ export function Changes() {
                   <Badge>{approval?.status ?? 'Required'}</Badge>
                 </div>
                 <div className="release-actions">
-                  <Button
-                    disabled={
-                      !can('change:deploy', incident.environment) ||
-                      incident.status !== 'Approved' ||
-                      !ready
-                    }
-                    onClick={() =>
-                      setActionDialog({
-                        incidentId: incident.id,
-                        action: 'deploy',
-                      })
-                    }
-                  >
-                    <Rocket size={15} />
-                    Simulate deployment
-                  </Button>
+                  {!real && (
+                    <Button
+                      disabled={
+                        !can('change:deploy', incident.environment) ||
+                        incident.status !== 'Approved' ||
+                        !ready
+                      }
+                      onClick={() =>
+                        setActionDialog({
+                          incidentId: incident.id,
+                          action: 'deploy',
+                        })
+                      }
+                    >
+                      <Rocket size={15} />
+                      Simulate deployment
+                    </Button>
+                  )}
+                  {real && change.pullRequest && (
+                    <a className="button button-secondary" href={change.pullRequest} target="_blank" rel="noreferrer">
+                      <Rocket size={15} />
+                      Open pull request
+                    </a>
+                  )}
                   <Button
                     disabled={
                       !can('recovery:record', incident.environment) ||
-                      incident.status !== 'Monitoring'
+                      !(real ? ['Approved', 'Monitoring'] : ['Monitoring']).includes(incident.status)
                     }
+                    title={real ? 'After the owning team applied the fix: record what you observed.' : undefined}
                     onClick={() =>
                       setActionDialog({
                         incidentId: incident.id,
@@ -500,23 +520,25 @@ export function Changes() {
                     }
                   >
                     <Check size={15} />
-                    Verify recovery
+                    {real ? 'Record verification' : 'Verify recovery'}
                   </Button>
-                  <Button
-                    disabled={
-                      !can('change:deploy', incident.environment) ||
-                      !['Monitoring', 'Resolved'].includes(incident.status)
-                    }
-                    onClick={() =>
-                      setActionDialog({
-                        incidentId: incident.id,
-                        action: 'rollback',
-                      })
-                    }
-                  >
-                    <RotateCcw size={15} />
-                    Rollback
-                  </Button>
+                  {!real && (
+                    <Button
+                      disabled={
+                        !can('change:deploy', incident.environment) ||
+                        !['Monitoring', 'Resolved'].includes(incident.status)
+                      }
+                      onClick={() =>
+                        setActionDialog({
+                          incidentId: incident.id,
+                          action: 'rollback',
+                        })
+                      }
+                    >
+                      <RotateCcw size={15} />
+                      Rollback
+                    </Button>
+                  )}
                 </div>
               </section>
               <section className="detail-sidebar">
@@ -536,16 +558,17 @@ export function Changes() {
                     p95 below 500 ms
                   </KeyValue>
                   <KeyValue label="Verification window">
-                    15 minutes / synthetic fixture
+                    {real ? 'Recorded by a person after the fix is applied' : '15 minutes / synthetic fixture'}
                   </KeyValue>
                 </dl>
                 <h3 className="detail-section-title">Rollback readiness</h3>
                 <p className="body-copy">{change.rollback}</p>
                 {incident.recovery && (
-                  <Notice title="Synthetic recovery recorded">
-                    {incident.recovery.errorRate}% errors /{' '}
-                    {incident.recovery.latency} ms p95. Recorded by{' '}
-                    {incident.recovery.actor}.
+                  <Notice title={incident.recovery.synthetic ? 'Synthetic recovery recorded' : 'Recovery recorded'}>
+                    {incident.recovery.errorRate === null || incident.recovery.errorRate === undefined
+                      ? `${incident.recovery.basis ?? 'Recorded by a person'}.`
+                      : `${incident.recovery.errorRate}% errors / ${incident.recovery.latency} ms p95 (${incident.recovery.basis ?? 'recorded'}).`}{' '}
+                    Recorded by {incident.recovery.actor}.
                   </Notice>
                 )}
               </section>
@@ -568,10 +591,39 @@ export function Changes() {
             columns={deploymentColumns}
             searchPlaceholder="Search deployments, services or artifacts"
           />
-          <Notice title="Synthetic deployment history">
-            Historical records are fixtures. New demo deployments and rollbacks
-            update local state only; no infrastructure adapter is connected.
-          </Notice>
+          {real ? (
+            <>
+              <SectionHeader title="Tool Gateway log" caption="Every outside action the agents requested: allowed, denied or failed" />
+              <table className="dependency-table">
+                <thead>
+                  <tr><th>When</th><th>Action</th><th>Incident</th><th>Approved by</th><th>Result</th></tr>
+                </thead>
+                <tbody>
+                  {(data.gateway ?? []).map((entry) => (
+                    <tr key={entry.id} title={entry.reason || entry.id}>
+                      <td>{dateTime(entry.startedAt)}</td>
+                      <td className="mono">{entry.action}</td>
+                      <td className="mono">{entry.incidentId || '—'}</td>
+                      <td>{entry.approvedBy ?? (entry.kind === 'execute' ? 'not required (measurement)' : '—')}</td>
+                      <td><Badge>{entry.status === 'SUCCEEDED' ? 'Succeeded' : entry.status === 'DENIED' ? 'Denied' : entry.status === 'FAILED' ? 'Failed' : 'Running'}</Badge>{entry.reason ? ` ${entry.reason}` : ''}</td>
+                    </tr>
+                  ))}
+                  {!(data.gateway ?? []).length && (
+                    <tr><td colSpan={5}>No outside action has been requested yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <Notice title="What appears here">
+                Deployments above are changes the Tool Gateway applied to the Payment API sandbox and verified. Pull requests it opened are
+                on the change request. Nothing is deployed to any other environment by this system.
+              </Notice>
+            </>
+          ) : (
+            <Notice title="Synthetic deployment history">
+              Historical records are fixtures. New demo deployments and rollbacks
+              update local state only; no infrastructure adapter is connected.
+            </Notice>
+          )}
         </>
       )}
       <Drawer
@@ -675,7 +727,7 @@ export function Changes() {
             {!can('approval:decide', reviewChange.environment) && (
               <Notice title="Separate approver required">
                 The current role can review evidence but cannot approve. The
-                Change Approver demo persona has a separate identity and
+                Change Approver {real ? 'role' : 'demo persona'} has a separate identity and
                 server-enforced decision permission.
               </Notice>
             )}

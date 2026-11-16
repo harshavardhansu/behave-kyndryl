@@ -32,7 +32,7 @@ def require(user: dict, permission: str, environment: str | None = None) -> None
 def audit(state: dict, user: dict, action: str, resource: str, incident: dict | None = None, previous: str = "", next_state: str = "", evidence: str = "", outcome: str = "Recorded") -> None:
     state["audit"].append({"id": identifier("AUD"), "timestamp": now(), "actor": user["name"], "actorId": user.get("id", user["name"]), "role": user["role"], "action": action, "resource": resource,
         "previous": previous, "next": next_state, "outcome": outcome, "correlationId": incident["id"] if incident else resource,
-        "environment": incident["environment"] if incident else "Workspace", "evidence": evidence, "synthetic": state["mode"] == "demo"})
+        "environment": incident["environment"] if incident else "Workspace", "evidence": evidence, "synthetic": state["mode"] == "demo" and state.get("workspaceKind") != "real"})
 
 
 def change_gates(state: dict, change: dict) -> list[dict]:
@@ -164,6 +164,23 @@ def act(state: dict, incident_id: str, command: ActionInput, user: dict, key: st
     sandbox_target = is_payment_sandbox(incident)
     if state["mode"] != "demo" and action in {"start-investigation", "resume", "retry", "generate-fix", "run-validation", "deploy", "rollback", "verify"} and not (sandbox_target and action in {"deploy", "rollback"}):
         raise HTTPException(503, "An authorized execution adapter is not configured. No operation was performed.")
+    real = state.get("workspaceKind") == "real"
+    if real:
+        # A real workspace never simulates. Investigation and fixes come from agent missions; this system does not
+        # deploy to anyone's environment; a person records what they observed after the owning team applied the fix.
+        refusals = {
+            "start-investigation": "Start an agent mission instead: the Orchestrator forms a team and every step is recorded.",
+            "resume": "There is no simulated workflow in this workspace. Use the agent mission.",
+            "retry": "There is no simulated workflow in this workspace. Use the agent mission.",
+            "generate-fix": "Fixes come from the Remediation agent in an agent mission, as an exact change checked against the real files.",
+            "run-validation": "No test runner is connected, so nothing can be executed here. Record the tests your pipeline ran as test evidence.",
+            "deploy": ("The Payment API sandbox is changed only by an agent mission, through the Tool Gateway, after a separate approval." if sandbox_target
+                       else "This system does not deploy. Merge the pull request or apply the approved change in your own pipeline, then record the verification."),
+            "rollback": ("Reset the Payment API sandbox from its panel, or run a new agent mission." if sandbox_target
+                         else "This system does not deploy or roll back. Revert the change in your own pipeline, then reopen the incident."),
+        }
+        if action in refusals:
+            raise HTTPException(409, refusals[action])
     previous = incident["status"]
     tasks = [task for task in state["agents"] if task["incidentId"] == incident_id]
     message = "Action recorded."
@@ -326,6 +343,26 @@ def act(state: dict, incident_id: str, command: ActionInput, user: dict, key: st
             incident.update(status="Reopened", workflowStatus="Idle", recovery=None, workflowGeneration=incident["workflowGeneration"] + 1)
             state["deployments"].append({"id": identifier("DEP"), "changeId": change["id"], "service": incident["service"], "version": "previous approved artifact", "environment": incident["environment"], "timestamp": now(), "status": "Simulated rollback"})
             message = "Rollback simulated. No infrastructure was changed; previous approval readiness is invalidated."
+    elif action == "verify" and real:
+        # A person records what they observed after the fix was applied by the owning team. No number is invented.
+        if incident["status"] not in {"Approved", "Monitoring"}:
+            raise HTTPException(409, "Verification is recorded after a fix was approved (and applied by the owning team).")
+        if len(command.reason.strip()) < 20:
+            raise HTTPException(422, "Describe what you observed after the fix was applied (at least 20 characters): what you checked and the result.")
+        note = redact(command.reason.strip())
+        evidence_id = identifier("EVD")
+        state["evidence"].append({"id": evidence_id, "incidentId": incident_id, "title": f"Recovery verified by {user['name']}", "type": "Observation", "source": f"recorded by {user['name']} ({user['role']})",
+                                  "timestamp": now(), "service": incident["service"], "environment": incident["environment"], "classification": "Observed", "excerpt": note,
+                                  "reason": "A person's statement of what they observed after the approved fix was applied. Not measured by this system.", "traceId": "", "synthetic": False})
+        incident.update(status="Resolved", recovery={"timestamp": now(), "errorRate": None, "latency": None, "actor": user["name"], "synthetic": False, "evidence": evidence_id,
+                                                      "basis": "Recorded by a person after the fix was applied (not measured by this system)"}, outcome=note[:1000])
+        for change in state["changes"]:
+            if change["incidentId"] == incident_id and change["status"] not in {"Completed", "Rolled Back", "Draft"}:
+                change["status"] = "Completed"
+        for record in state["knowledge"]:
+            if incident_id in record.get("incidents", []) and record.get("type") == "Incident resolution" and not record.get("verified"):
+                record.update(verified=True, verifiedBy=user["name"], verifiedAt=now(), verification=note[:600])
+        message = "Verification recorded with your observation. The incident is resolved; close it with an outcome summary."
     elif action == "verify":
         if incident["status"] != "Monitoring":
             raise HTTPException(409, "Verification requires a deployed change in Monitoring state.")
@@ -344,8 +381,11 @@ def act(state: dict, incident_id: str, command: ActionInput, user: dict, key: st
         for task in tasks:
             if task["role"] in {"orchestrator", "summary"}:
                 task.update(status="Completed", lastActivity=now(), task="Human-reviewed outcome recorded", outputs=[incident_id])
-        state["knowledge"].append({"id": identifier("KB"), "title": f"Resolution draft: {incident['title']}", "type": "Incident report", "owner": user["name"], "ownerId": user["id"], "version": "0.1", "reviewedAt": now(), "approved": False, "source": "Human closure; pending knowledge review", "services": [incident["service"]], "incidents": [incident_id], "body": f"Recorded outcome\n{redact(command.reason)}\n\nVerification evidence\n{incident['recovery']['evidence']}\n\nThis draft requires separate knowledge approval. Synthetic verification does not establish a real production resolution."})
-        message = "Incident closed with a recorded outcome. A knowledge draft is available for review."
+        if any(incident_id in record.get("incidents", []) and record.get("type") == "Incident resolution" for record in state["knowledge"]):
+            pass  # the agent mission already wrote the resolution record: no second draft
+        else:
+            state["knowledge"].append({"id": identifier("KB"), "title": f"Resolution draft: {incident['title']}", "type": "Incident report", "owner": user["name"], "ownerId": user["id"], "version": "0.1", "reviewedAt": now(), "approved": False, "source": "Human closure; pending knowledge review", "services": [incident["service"]], "incidents": [incident_id], "body": f"Recorded outcome\n{redact(command.reason)}\n\nVerification evidence\n{incident['recovery']['evidence']}\n\nThis draft requires separate knowledge approval." + ("" if real else " Synthetic verification does not establish a real production resolution.")})
+        message = "Incident closed with a recorded outcome. The resolution record is in the knowledge base for review."
     elif action == "reopen":
         if incident["status"] not in {"Closed", "Resolved"}:
             raise HTTPException(409, "Only a resolved or closed incident can be reopened.")

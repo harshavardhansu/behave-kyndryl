@@ -14,10 +14,11 @@ import {
   ShieldCheck,
   ShieldOff,
 } from 'lucide-react'
-import { useWorkspace } from '../context'
+import { useQuery } from '@tanstack/react-query'
+import { useIncident, useRealWorkspace, useWorkspace } from '../context'
 import { request } from '../lib/api'
-import { errorMessage, severities } from '../lib/format'
-import type { SecurityFinding } from '../types'
+import { dateTime, errorMessage, severities } from '../lib/format'
+import type { DependencyInventory, SecurityFinding } from '../types'
 import {
   Badge,
   Button,
@@ -125,8 +126,48 @@ function Triage({
   )
 }
 
+/** The dependencies the selected incident's source code declares in its manifest files. */
+function DependencyList({ incidentId }: { incidentId?: string }) {
+  const query = useQuery({
+    queryKey: ['dependencies', incidentId],
+    queryFn: () => request<DependencyInventory>(`/incidents/${incidentId}/dependencies`),
+    enabled: Boolean(incidentId),
+  })
+  if (!incidentId) return <Notice title="No incident selected">Select an incident that has source code (a ZIP, a file or a repository).</Notice>
+  if (query.isLoading) return <p className="body-copy">Reading the project's manifest files…</p>
+  if (query.isError) return <Notice title="Inventory unavailable" tone="warning">{errorMessage(query.error)}</Notice>
+  const inventory = query.data
+  if (!inventory) return null
+  return (
+    <>
+      <Notice title={inventory.total ? `${inventory.total} declared dependencies in ${inventory.manifests.length} manifest file(s)` : 'No dependencies found'}>
+        {inventory.note}
+        {inventory.source ? ` Read from ${inventory.source}.` : ''}
+        {inventory.unpinned ? ` ${inventory.unpinned} are not pinned to an exact version.` : ''}
+      </Notice>
+      <table className="dependency-table">
+        <thead>
+          <tr><th>Package</th><th>Version</th><th>Ecosystem</th><th>Scope</th></tr>
+        </thead>
+        <tbody>
+          {inventory.dependencies.map((row) => (
+            <tr key={`${row.manifest}:${row.name}:${row.scope}`} title={row.manifest}>
+              <td className="mono">{row.name}</td>
+              <td className="mono">{row.version}</td>
+              <td>{row.ecosystem}</td>
+              <td>{row.scope}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  )
+}
+
 export function Security() {
   const { data } = useWorkspace()
+  const real = useRealWorkspace()
+  const incident = useIncident()
   const [params] = useSearchParams()
   const [category, setCategory] = useState('All findings')
   const [severity, setSeverity] = useState('All severities')
@@ -194,16 +235,16 @@ export function Security() {
     <div className="page-enter">
       <PageHeader
         title="Security centre"
-        description="Workspace findings / All environments / Synthetic scanner evidence"
+        description={real ? 'Findings from static rules run on real repository files / All environments' : 'Workspace findings / All environments / Synthetic scanner evidence'}
         actions={
           <>
             <Button onClick={() => setSbom(true)}>
               <Boxes size={15} />
-              Demo SBOM
+              {real ? 'Dependency inventory' : 'Demo SBOM'}
             </Button>
-            <Link to="/administration" className="button button-secondary">
+            <Link to={real ? '/repositories' : '/administration'} className="button button-secondary">
               <ScanLine size={15} />
-              Configure scanners
+              {real ? 'Scan a repository' : 'Configure scanners'}
               <ArrowUpRight size={13} />
             </Link>
           </>
@@ -244,14 +285,23 @@ export function Security() {
             .filter((finding) => finding.status === 'Resolved')
             .length.toString()
             .padStart(2, '0')}
-          detail="Recorded fixture outcomes"
+          detail={real ? 'Marked resolved by a person' : 'Recorded fixture outcomes'}
           icon={CheckCheck}
         />
       </div>
-      <Notice title="No security scanner is connected" tone="warning">
-        These are synthetic scanner findings. No SAST, dependency, secret,
-        container or infrastructure scan has been executed by this workspace.
-      </Notice>
+      {real ? (
+        <Notice title="Built-in rules on real files">
+          Findings come from the built-in static rules (hardcoded credentials, debug settings, containers running as root, unsafe
+          workflow settings) run on a real repository from Project & repositories, Analyse project. Each names the file and line, with
+          matched secrets masked. No external SAST or dependency-vulnerability scanner is connected, so an empty list is not proof of a
+          secure project.
+        </Notice>
+      ) : (
+        <Notice title="No security scanner is connected" tone="warning">
+          These are synthetic scanner findings. No SAST, dependency, secret,
+          container or infrastructure scan has been executed by this workspace.
+        </Notice>
+      )}
       <div className="section-spacer" />
       <Tabs items={scanners} value={category} onChange={setCategory} />
       <DataTable
@@ -289,7 +339,7 @@ export function Security() {
           </>
         }
         emptyTitle="No matching finding records"
-        emptyDescription="No fixture findings match this category. This does not imply a successful or clean security scan."
+        emptyDescription={real ? 'No finding matches. Scan a repository from Project & repositories to check its files; an empty list does not prove a project is secure.' : 'No fixture findings match this category. This does not imply a successful or clean security scan.'}
       />
       <div className="security-principles">
         <div>
@@ -319,7 +369,7 @@ export function Security() {
             <div className="detail-badges">
               <Badge>{selected.severity}</Badge>
               <Badge>{selected.status}</Badge>
-              <Badge tone="outline">Synthetic finding</Badge>
+              <Badge tone="outline">{selected.synthetic === false ? 'Found by a repository scan' : 'Synthetic finding'}</Badge>
             </div>
             <p className="body-copy">{selected.description}</p>
             <dl>
@@ -333,6 +383,8 @@ export function Security() {
               <KeyValue label="Scanner reference" mono>
                 {selected.reference}
               </KeyValue>
+              {selected.source && <KeyValue label="Scanned source">{selected.source}</KeyValue>}
+              {selected.lastSeen && <KeyValue label="Last seen">{dateTime(selected.lastSeen)}</KeyValue>}
               <KeyValue label="Linked incident">
                 {selected.incidentId || 'No linked incident'}
               </KeyValue>
@@ -350,37 +402,43 @@ export function Security() {
       <Drawer
         open={sbom}
         onClose={() => setSbom(false)}
-        title="Software bill of materials"
-        subtitle="Example inventory / Not a generated SBOM"
+        title={real ? 'Dependency inventory' : 'Software bill of materials'}
+        subtitle={real ? `Declared dependencies / ${incident?.id ?? 'no incident selected'}` : 'Example inventory / Not a generated SBOM'}
       >
-        <Notice title="Partial synthetic inventory">
-          These declared dependencies are fixture metadata, not a verified scan
-          or a complete dependency graph.
-        </Notice>
-        <dl>
-          <KeyValue label="Service">commerce-checkout</KeyValue>
-          <KeyValue label="Runtime">Java 21 / Eclipse Temurin</KeyValue>
-          <KeyValue label="Framework">Spring Boot 3.3.5 (fixture)</KeyValue>
-          <KeyValue label="Database driver">
-            PostgreSQL JDBC (version not provided)
-          </KeyValue>
-          <KeyValue label="Connection pool">
-            HikariCP (managed dependency)
-          </KeyValue>
-          <KeyValue label="Test framework">JUnit (managed dependency)</KeyValue>
-          <KeyValue label="License verification">Not performed</KeyValue>
-          <KeyValue label="Full SBOM artifact">
-            Unavailable until an SCA adapter is configured
-          </KeyValue>
-        </dl>
-        <Link
-          className="button button-secondary"
-          to="/administration"
-          onClick={() => setSbom(false)}
-        >
-          Scanner configuration
-          <ArrowUpRight size={14} />
-        </Link>
+        {real ? (
+          <DependencyList incidentId={sbom ? incident?.id : undefined} />
+        ) : (
+          <>
+            <Notice title="Partial synthetic inventory">
+              These declared dependencies are fixture metadata, not a verified scan
+              or a complete dependency graph.
+            </Notice>
+            <dl>
+              <KeyValue label="Service">commerce-checkout</KeyValue>
+              <KeyValue label="Runtime">Java 21 / Eclipse Temurin</KeyValue>
+              <KeyValue label="Framework">Spring Boot 3.3.5 (fixture)</KeyValue>
+              <KeyValue label="Database driver">
+                PostgreSQL JDBC (version not provided)
+              </KeyValue>
+              <KeyValue label="Connection pool">
+                HikariCP (managed dependency)
+              </KeyValue>
+              <KeyValue label="Test framework">JUnit (managed dependency)</KeyValue>
+              <KeyValue label="License verification">Not performed</KeyValue>
+              <KeyValue label="Full SBOM artifact">
+                Unavailable until an SCA adapter is configured
+              </KeyValue>
+            </dl>
+            <Link
+              className="button button-secondary"
+              to="/administration"
+              onClick={() => setSbom(false)}
+            >
+              Scanner configuration
+              <ArrowUpRight size={14} />
+            </Link>
+          </>
+        )}
       </Drawer>
     </div>
   )

@@ -885,13 +885,28 @@ function ActionDialog({
   const [error, setError] = useState('')
   const incident = data.incidents.find((record) => record.id === incidentId)
   const change = data.changes.find((record) => record.incidentId === incidentId)
-  const copy = actionCopy[action]
+  const real = data.workspaceKind === 'real'
+  // Real workspace: recovery is what a person observed after the fix was applied, never a replayed number.
+  const copy =
+    real && action === 'verify'
+      ? {
+          title: 'Record verification',
+          label: 'Record verification',
+          description:
+            'After the owning team applied the approved fix (for example by merging the pull request), describe what you checked and what you saw. Your statement is stored as evidence under your name. This system does not measure it.',
+        }
+      : real && action === 'close'
+        ? { ...actionCopy[action], description: 'Recovery evidence is required. The outcome is recorded in the audit trail; the resolution record written by the agent mission stays in the knowledge base for review.' }
+        : real && action === 'approve'
+          ? { ...actionCopy[action], description: 'Review the proposed change, the evidence and the rollback plan. Approval is recorded under your name; you cannot approve your own request.' }
+          : actionCopy[action]
   const needsReason = [
     'close',
     'reopen',
     'reject',
     'escalate',
     'rollback',
+    ...(real ? ['verify'] : []),
   ].includes(action)
   if (!incident) return null
   const permitted = can(actionPermissions[action], incident.environment)
@@ -933,7 +948,7 @@ function ActionDialog({
                 'run-validation',
                 'start-investigation',
               ].includes(action)
-                ? 'Explicit demo operation'
+                ? real ? 'Recorded under your name' : 'Explicit demo operation'
                 : 'Governed action'
             }
           >
@@ -994,7 +1009,7 @@ function ActionDialog({
           )}
           {needsReason && (
             <label className="field-label">
-              {action === 'close' ? 'Verified outcome' : 'Decision reason'}
+              {action === 'close' ? 'Verified outcome' : action === 'verify' ? 'What you checked and observed (at least 20 characters)' : 'Decision reason'}
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
@@ -1008,7 +1023,7 @@ function ActionDialog({
           {!permitted && (
             <Notice title="Insufficient permission" tone="warning">
               The current role does not have {actionPermissions[action]} for{' '}
-              {incident.environment}. Select an authorized demo identity from
+              {incident.environment}. Select an authorized {real ? 'role' : 'demo identity'} from
               your profile to review the applicable decision.
             </Notice>
           )}

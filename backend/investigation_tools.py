@@ -64,7 +64,11 @@ TOOL_NAMES = {spec["name"] for spec in TOOL_SPECS}
 class InvestigationTools:
     """The tools for ONE incident. ``trail`` records every call that was made."""
 
-    def __init__(self, state: dict, incident: dict, sandbox: Any = None, projects: Projects | None = None):
+    def __init__(self, state: dict, incident: dict, sandbox: Any = None, projects: Projects | None = None, role: str | None = None):
+        from .tool_gateway import allowed_tools
+
+        self.role = role
+        self.allowed = allowed_tools(role)  # least privilege per agent role (None: no restriction)
         self.state = state
         self.incident = incident
         self.sandbox = sandbox
@@ -86,7 +90,9 @@ class InvestigationTools:
         if len(self.trail) >= MAX_CALLS:
             result: dict = {"error": f"Tool budget of {MAX_CALLS} calls used. Answer now with what you have."}
         elif name not in self._handlers:
-            result = {"error": f"Unknown tool {name}. Available: {', '.join(sorted(TOOL_NAMES))}."}
+            result = {"error": f"Unknown tool {name}. Available: {', '.join(sorted(self.allowed or TOOL_NAMES))}."}
+        elif self.allowed is not None and name not in self.allowed:
+            result = {"error": f"The {self.role} agent may not use {name} (least privilege). Allowed: {', '.join(sorted(self.allowed))}."}
         else:
             try:
                 result = self._handlers[name](**{key: value for key, value in arguments.items() if key in ARGUMENTS})
@@ -124,6 +130,8 @@ class InvestigationTools:
             return f"{result['total']} matching lines" + (f" ({result['firstSeen']} to {result['lastSeen']})" if result.get("firstSeen") else "")
         if name == "read_log" and "file" in result:
             return f"{result['file']} lines {result.get('from')}-{result.get('to')} of {result.get('totalLines')}"
+        if name == "search_knowledge" and isinstance(result.get("articles"), list):
+            return f"{len(result['articles'])} articles via {str(result.get('retrieval', 'search')).split(' (')[0]}"
         for key in ("matches", "evidence", "changes", "files", "articles", "logs", "errors"):
             if isinstance(result.get(key), list):
                 return f"{len(result[key])} {key}"
@@ -329,17 +337,9 @@ class InvestigationTools:
         return result
 
     def search_knowledge(self, query: str = "") -> dict:
-        words = [w for w in re.split(r"\W+", query.lower()) if len(w) > 2]
-        if not words:
+        """Approved runbooks and past resolutions: Azure AI Search when configured, else local keyword search."""
+        from . import knowledge_search
+
+        if len([word for word in re.split(r"\W+", str(query)) if len(word) > 2]) == 0:
             return {"error": "Give at least one search word."}
-        service = self.incident.get("service")
-        hits = []
-        for article in self.state.get("knowledge", []):
-            if not article.get("approved"):
-                continue
-            haystack = f"{article.get('title', '')} {article.get('body', '')}".lower()
-            score = sum(w in haystack for w in words) + (1 if service in article.get("services", []) else 0)
-            if score > 1 or (score and service in article.get("services", [])):
-                hits.append((score, article))
-        hits.sort(key=lambda pair: -pair[0])
-        return {"articles": [{"id": a["id"], "title": a.get("title"), "type": a.get("type"), "text": _clip(a.get("body", ""), 700)} for _, a in hits[:3]]}
+        return knowledge_search.search(self.state.get("knowledge", []), str(query), str(self.incident.get("service") or ""), top=3)

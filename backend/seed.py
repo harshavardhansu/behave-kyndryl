@@ -221,6 +221,23 @@ def seed_workspace(demo: bool = True) -> dict:
     return state
 
 
+def real_workspace(mode: str = "demo") -> dict:
+    """A workspace with no demonstration records at all.
+
+    Every incident, error, log, test run, security finding, change and knowledge record in it comes from
+    real use: uploaded logs and code, connected repositories, agent missions and people's decisions.
+    ``mode`` is the sign-in mode of the deployment (persona sign-in behind Entra, or Entra tokens).
+    """
+    stamp = datetime.now(timezone.utc).isoformat()
+    return {
+        "mode": mode, "workspaceKind": "real", "snapshotAt": stamp, "workspace": "Behave Kyndryl",
+        "incidents": [], "services": [], "dependencies": [], "evidence": [], "hypotheses": [], "agents": [], "tests": [],
+        "security": [], "changes": [], "approvals": [], "logs": [], "knowledge": [], "audit": [], "deployments": [],
+        "integrations": [], "trends": [], "sandboxOperations": [], "errors": [], "gateway": [], "missions": [],
+        "policy": PolicyInput().model_dump(),
+    }
+
+
 def fresh_workspace() -> dict:
     """Return a pristine workspace with all demo activities (incidents, changes,
     approvals, evidence, hypotheses, tests, security findings, logs, audit events)

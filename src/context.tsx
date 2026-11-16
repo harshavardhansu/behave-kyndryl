@@ -64,6 +64,12 @@ export function useWorkspace() {
   return context
 }
 
+/** True when the workspace holds only real records (no demonstration data set). */
+export function useRealWorkspace() {
+  const context = useContext(WorkspaceContext)
+  return context?.data.workspaceKind === 'real'
+}
+
 export function useIncident() {
   const { data, selectedIncidentId } = useWorkspace()
   return (

@@ -177,7 +177,7 @@ export function Incidents() {
     <div className="page-enter">
       <PageHeader
         title="Issues & incidents"
-        description={`${environment} / ${scoped.length} incident records / synthetic and user-supplied evidence`}
+        description={data.workspaceKind === 'real' ? `${environment} / ${scoped.length} incident records / evidence supplied by people and collected by agents` : `${environment} / ${scoped.length} incident records / synthetic and user-supplied evidence`}
         actions={
           <>
             <Button onClick={() => void exportReport('csv')}>
@@ -350,6 +350,7 @@ export function IncidentDetail() {
     can,
     notify,
   } = useWorkspace()
+  const real = data.workspaceKind === 'real'
   const [tab, setTab] = useState('Overview')
   const [pdfBusy, setPdfBusy] = useState(false)
   const [reportCopied, setReportCopied] = useState(false)
@@ -512,8 +513,8 @@ export function IncidentDetail() {
                 <ArrowRight size={18} />
               </span>
               <div>
-                <strong>Next decision / {nextAction(incident).label}</strong>
-                <p>{nextAction(incident).detail}</p>
+                <strong>Next decision / {nextAction(incident, real).label}</strong>
+                <p>{nextAction(incident, real).detail}</p>
               </div>
               <Badge>{incident.status}</Badge>
             </div>
@@ -697,7 +698,7 @@ export function IncidentDetail() {
           <>
             <SectionHeader
               title="Observed & inferred dependencies"
-              caption="Synthetic topology / not a live infrastructure connection"
+              caption={real ? 'No dependency map is connected: relationships are not known for this service' : 'Synthetic topology / not a live infrastructure connection'}
               actions={
                 <Link className="button button-secondary" to="/war-room">
                   <Network size={15} />
@@ -796,7 +797,7 @@ export function IncidentDetail() {
           <>
             <SectionHeader
               title="Validation evidence"
-              caption="Synthetic fixtures and manually recorded results are labeled"
+              caption={real ? 'Measured sandbox runs and results recorded by people, each with its source' : 'Synthetic fixtures and manually recorded results are labeled'}
               actions={
                 <Link className="text-link" to="/testing">
                   Validation centre

@@ -14,6 +14,7 @@
         "allowExportNames": [
           "useWorkspace",
           "useIncident",
+          "useRealWorkspace",
           "actionPermissions",
           "nextAction",
           "navigation"

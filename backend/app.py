@@ -26,7 +26,9 @@ from .data_governance import DataPolicyError, authorize_model_context, evidence_
 from .domain import ActionInput, DataClassification, EvidenceInput, IncidentInput, PERSONAS, PolicyInput, ReviewInput, Settings, StrictModel, now, persona, redact
 from .payment_sandbox import PaymentSandboxControl, PaymentSandboxControlAdapter
 from .providers import Assessment, ProviderError, configured_provider, validate_references
-from .seed import fresh_workspace, seed_workspace
+from .seed import fresh_workspace, real_workspace, seed_workspace
+from . import platform_status, real_views
+from .dependency_inventory import inventory as dependency_inventory
 from .ai_client import AIBudget, AIUnavailable, ai_configured, key_mode
 from .foundry_agents import get_all_agents
 from .foundry_runtime import FoundryAgentService, foundry_agent_status
@@ -34,8 +36,10 @@ from .foundry_brain import FoundryBrain
 from .mission import STEPS, DecisionInput, MissionTools, SimulatedBrain, cancel_mission, decide, pause_interrupted, resume_mission, run_mission, start_mission
 from .store import Store
 from .connectors import Projects, configure as configure_connectors, ensure_services, forget_snapshots, storage_root
-from .error_intel import correlate, record_errors
+from .error_intel import correlate, parse_log_lines, record_errors
 from .github_browse import GitHubBrowser, GitHubLookupError
+from .tool_gateway import ToolGateway
+from . import knowledge_search, telemetry
 from .task_inputs import TaskStorage, UnsafeArchive, inspect_zip, profile_project
 from .workflow import act, audit, change_gates, find, identifier, is_payment_sandbox, record_payment_sandbox_result, require, run_demo_workflow
 from .payment_local import LocalPaymentSandbox, SandboxError, read_recent_errors
@@ -89,7 +93,7 @@ class RecordedTestInput(StrictModel):
 
 
 class RepositoryInput(StrictModel):
-    source: Literal["fixture", "repository"]
+    source: Literal["fixture", "repository", "incident"]  # "incident": the source connected to the incident (ZIP, file or repository)
     url: str = Field("", max_length=500)
     branch: str = Field("main", min_length=1, max_length=120)
     commit: str = Field("c7f4e21", min_length=3, max_length=100)
@@ -120,7 +124,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if not config.azure_tenant_id or not config.auth_audience:
             raise RuntimeError("Production requires AZURE_TENANT_ID and AGENTICA_AUTH_AUDIENCE; demo authentication is disabled.")
     database = store or Store(config.database_url)
-    database.initialize(seed_workspace(config.mode == "demo"))
+    database.initialize(real_workspace(config.mode) if config.workspace == "real" else seed_workspace(config.mode == "demo"))
     if database.read()["mode"] != config.mode:
         raise RuntimeError("Use a separate database for demo and production. Synthetic records must never be promoted as production data.")
 
@@ -155,7 +159,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     logging.getLogger("behave.foundry").warning("Foundry auto-sync failed: %s", error)
 
             Thread(target=sync_agents, name="foundry-auto-sync", daemon=True).start()
+        knowledge_search.refresh(lambda: database.read()["knowledge"])  # make the search index match the knowledge base
         yield
+        telemetry.shutdown()
         control = application.state.sandbox_control
         if isinstance(control, LocalPaymentSandbox):
             control.stop()
@@ -171,6 +177,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     )
     application.state.store = database
     configure_connectors(config)  # connectors and task storage follow this application's settings
+    knowledge_search.configure(config)  # organizational memory in Azure AI Search (when configured)
+    telemetry.configure(config.applicationinsights_connection_string.get_secret_value())
     task_storage = TaskStorage(storage_root(config))
     application.state.settings = config
     application.state.provider = configured_provider(config)
@@ -179,7 +187,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     application.state.sandbox_control = sandbox_control or (
         LocalPaymentSandbox() if os.getenv("PAYMENT_SANDBOX_MODE", "local") == "local" else PaymentSandboxControlAdapter()
     )
-    application.state.mission_tools = MissionTools(application.state.sandbox_control if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None)
+    application.state.tool_gateway = ToolGateway(database)  # every outside action by the agents passes through here
+    application.state.mission_tools = MissionTools(application.state.sandbox_control if isinstance(application.state.sandbox_control, LocalPaymentSandbox) else None,
+                                                   gateway=application.state.tool_gateway)
     if hasattr(application.state.mission_brain, "sandbox") and isinstance(application.state.sandbox_control, LocalPaymentSandbox):
         application.state.mission_brain.sandbox = application.state.sandbox_control
     sandbox_operation_lock = Lock()
@@ -266,9 +276,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
 
     @application.get("/api/v1/health")
     def health():
-        result = {"status": "ok", "database": "AVAILABLE", "mode": config.mode, "execution": "synthetic only" if config.mode == "demo" else "disabled until adapters configured"}
+        result = {"status": "ok", "database": "AVAILABLE", "mode": config.mode,
+                  "execution": "Tool Gateway: Payment API sandbox and opted-in pull requests only, after a separate human approval"}
         try:
             database.check_health()
+            result["workspace"] = database.read().get("workspaceKind", "demo")
         except SQLAlchemyError:
             return JSONResponse(status_code=503, content={**result, "status": "unavailable", "database": "UNAVAILABLE"})
         return result
@@ -286,7 +298,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         result = {"user": persona(payload.role), "csrf": csrf, "mode": "demo", "workspace": "Northstar Commerce"}
         database.save_session(hashlib.sha256(token.encode()).hexdigest(), {**result, "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=8)).isoformat()})
         response.set_cookie("agentica_session", token, httponly=True, samesite="strict", max_age=28_800, path="/api", secure=config.secure_cookies)
-        database.mutate(lambda state: audit(state, result["user"], "Demo identity selected", payload.role))
+        database.mutate(lambda state: audit(state, result["user"], "Role selected" if state.get("workspaceKind") == "real" else "Demo identity selected", payload.role))
         return result
 
     @application.get("/api/v1/auth/session")
@@ -326,9 +338,58 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                     integration["authentication"] = "API key" if key_mode(config) else "Microsoft Entra ID"
             if integration["id"] == "entra" and config.mode == "production":
                 integration["status"] = "Configured, not verified"
+        if state.get("workspaceKind") == "real":
+            # Real workspace: every status and number is checked or computed from real records, never stored demo values.
+            state["integrations"] = platform_status.statuses(config, state, len(state.get("foundryAgents") or {}), ai_configured(config))
+            state["trends"] = real_views.trends(state)
+            state["services"] = real_views.services(state)
+            state["metrics"] = real_views.metrics(state)
+            state["snapshotAt"] = now()  # a real workspace is always "as of now"
+        state["workspaceKind"] = state.get("workspaceKind", "demo")
+        state["gateway"] = sorted(state.get("gateway", []), key=lambda entry: entry["startedAt"], reverse=True)[:50]
         state["audit"].sort(key=lambda event: event["timestamp"], reverse=True)
         state["incidents"].sort(key=lambda incident: incident["detectedAt"], reverse=True)
         return state
+
+    @application.get("/api/v1/gateway")
+    def gateway_catalog(auth: Auth):
+        """The Tool Gateway's registered actions, per-agent read permissions and recent decisions."""
+        require(auth["user"], "read")
+        log = sorted(database.read().get("gateway", []), key=lambda entry: entry["startedAt"], reverse=True)[:100]
+        return {**application.state.tool_gateway.catalog(), "log": log}
+
+    @application.get("/api/v1/incidents/{incident_id}/source")
+    def incident_source(incident_id: str, auth: Auth):
+        """The source code connected to an incident: where it comes from, its files and what the project is."""
+        require(auth["user"], "read")
+        incident = find(database.read(), "incidents", incident_id)
+        code = Projects.load().resolve(incident).code
+        paths = code.paths()
+        return {"label": code.label if paths else "", "files": paths[:2000], "total": len(paths), "project": profile_project(code) if paths else None,
+                "pullRequests": bool(paths and getattr(code, "pull_requests", False) and getattr(code, "token", "")),
+                "problem": "" if paths else (code.problem or "No source code is connected to this incident.")}
+
+    @application.get("/api/v1/incidents/{incident_id}/source/file")
+    def incident_source_file(incident_id: str, auth: Auth, path: str = ""):
+        """One file of the incident's source, read-only, with secrets redacted. Only listed files can be read."""
+        require(auth["user"], "read")
+        incident = find(database.read(), "incidents", incident_id)
+        code = Projects.load().resolve(incident).code
+        if path not in code.paths():
+            raise HTTPException(404, "That file is not part of this incident's source.")
+        text = code.read(path) or ""
+        return {"path": path, "lines": len(text.splitlines()), "truncated": len(text) > 200_000, "text": redact(text[:200_000])}
+
+    @application.get("/api/v1/incidents/{incident_id}/dependencies")
+    def incident_dependencies(incident_id: str, auth: Auth):
+        """Dependencies declared in the manifests of the task's source code (uploaded or from GitHub)."""
+        require(auth["user"], "read")
+        incident = find(database.read(), "incidents", incident_id)
+        code = Projects.load().resolve(incident).code
+        if not code.paths():
+            return {"source": "", "manifests": [], "dependencies": [], "total": 0, "unpinned": 0,
+                    "note": code.problem or "No source code is connected to this incident, so there is nothing to inventory."}
+        return dependency_inventory(code)
 
     @application.get("/api/v1/foundry/agents")
     def list_foundry_agents(auth: Auth):
@@ -508,7 +569,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         return database.mutate(record)
 
     class ResetInput(StrictModel):
-        mode: Literal["demo", "fresh"] = "demo"
+        mode: Literal["demo", "fresh", "real"] = "demo"
 
     @application.post("/api/v1/admin/demo-reset")
     def demo_reset(auth: Auth, payload: ResetInput = ResetInput()):
@@ -518,19 +579,23 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         require(auth["user"], "admin:write")
         if config.mode != "demo":
             raise HTTPException(403, "Demo data can only be reset in demo mode.")
+        if config.workspace == "real" and payload.mode != "real":
+            raise HTTPException(409, "This deployment keeps real records only: demonstration data cannot be loaded into it.")
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        backup = database.backup(Path("data") / "backups" / f"agentica-{stamp}.db")
+        folder = Path(database.engine.url.database).parent if database.engine.dialect.name == "sqlite" and database.engine.url.database not in (None, "", ":memory:") else Path("data")
+        backup = database.backup(folder / "backups" / f"agentica-{stamp}.db")  # next to the database, so it survives restarts
         is_fresh = payload.mode == "fresh"
-        target_state = fresh_workspace() if is_fresh else seed_workspace(True)
+        target_state = real_workspace(config.mode) if payload.mode == "real" else fresh_workspace() if is_fresh else seed_workspace(True)
         ensure_services(target_state, Projects.load(), now())
         database.reset(target_state)
-        action_name = "Fresh workspace initialized" if is_fresh else "Demo data reset"
-        next_state = "Fresh workspace (demo activities cleared)" if is_fresh else "Fresh demo stories"
+        knowledge_search.refresh(lambda: database.read()["knowledge"])
+        action_name = {"real": "Real workspace initialized", "fresh": "Fresh workspace initialized"}.get(payload.mode, "Demo data reset")
+        next_state = {"real": "Real workspace (no demonstration records)", "fresh": "Fresh workspace (demo activities cleared)"}.get(payload.mode, "Fresh demo stories")
         database.mutate(lambda state: audit(state, auth["user"], action_name, "workspace", next_state=next_state, evidence=str(backup or "")))
         control = application.state.sandbox_control
         if isinstance(control, LocalPaymentSandbox):
             control.stop()
-        msg = ("Fresh workspace ready: all demo activities cleared." if is_fresh else "Demo data restored.") + (f" Previous data backed up to {backup}." if backup else "")
+        msg = {"real": "Real workspace ready: no demonstration records.", "fresh": "Fresh workspace ready: all demo activities cleared."}.get(payload.mode, "Demo data restored.") + (f" Previous data backed up to {backup}." if backup else "")
         return {"message": msg, "backup": str(backup) if backup else None}
 
     @application.post("/api/v1/incidents/{incident_id}/missions", status_code=201)
@@ -543,6 +608,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     def mission_decision(mission_id: str, payload: DecisionInput, background: BackgroundTasks, auth: Auth):
         result = database.mutate(lambda state: decide(state, mission_id, payload, auth["user"]))
         launch_mission(background, result)
+        remembered = next((item.get("knowledgeId") for item in database.read().get("missions", []) if item["id"] == mission_id), None)
+        if remembered:
+            knowledge_search.refresh(lambda: database.read()["knowledge"], [remembered])  # organizational memory goes into the search index
         return result
 
     @application.post("/api/v1/missions/{mission_id}/cancel")
@@ -693,6 +761,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 state["logs"].append({"id": identifier("LOG"), "timestamp": original_time, "level": level if level in {"ERROR", "WARN", "INFO", "DEBUG"} else "INFO", "service": current["service"], "environment": current["environment"], "message": redact(str(log["message"]))[:8000], "traceId": redact(str(log.get("traceId", log.get("trace_id", ""))))[:200], "source": record["source"], "attributes": {"originalSeverity": redact(level), "sourceRecord": json.dumps(redact(log))[:12000]}, "evidenceId": evidence_id, "dataClassification": record["dataClassification"]})
             if ev_type in {"Log", "Data"}:
                 record["errorGroups"] = [issue["id"] for issue in record_errors(state, current, raw_text, evidence_id, now(), identifier)]
+            if ev_type == "Log":
+                record["logRecords"] = add_log_records(state, current, raw_text, evidence_id, record["source"], record["dataClassification"])
             if ev_type in {"Code", "Configuration"}:
                 # A source file is also kept as the task's source, so agents can read it in full and a fix can be built against it.
                 current.setdefault("sourceUploads", []).append({"id": evidence_id, "name": filename, "kind": "file", "files": 1, "sha256": record["sha256"], "at": now()})
@@ -702,6 +772,30 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         if extension in code_extensions | {"yml", "yaml", "xml"}:
             task_storage.save(incident_id, evidence_id, {filename: raw_text})
         return database.mutate(attach)
+
+    def add_log_records(state: dict, incident: dict, text: str, evidence_id: str, source: str, classification: str) -> int:
+        """Every timestamped or levelled line of an uploaded log, for the Observability log view. Missing times stay marked."""
+        uploaded_at = now()
+        added = 0
+        for line in parse_log_lines(text):
+            stamp = line["timestamp"]
+            attributes: dict = {}
+            if stamp:
+                stamp = stamp.replace(" ", "T", 1).replace(",", ".")
+                if not re.search(r"(Z|[+-]\d{2}:?\d{2})$", stamp):
+                    stamp += "Z"
+                    attributes["timezone"] = "not in the log line; shown as UTC"
+            else:
+                stamp = uploaded_at
+                attributes["timestamp"] = "the log line has none; upload time shown"
+            if line["requestId"]:
+                attributes["requestId"] = redact(line["requestId"])[:120]
+            state["logs"].append({"id": identifier("LOG"), "timestamp": stamp, "level": line["level"], "service": incident["service"], "environment": incident["environment"],
+                                  "message": redact(line["message"])[:8000], "traceId": redact(line["requestId"])[:200], "source": source, "attributes": attributes,
+                                  "evidenceId": evidence_id, "dataClassification": classification, "synthetic": False})
+            added += 1
+        state["logs"] = state["logs"][-20000:]
+        return added
 
     async def upload_archive(incident_id: str, auth: dict, file: UploadFile, filename: str, data_classification: str):
         """A ZIP of logs or of a whole project. It is inspected in memory and never unpacked to disk."""
@@ -732,6 +826,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 log_record["dataClassification"] = strongest_classification(current, {"dataClassification": data_classification})
                 log_record.update(evidence_provenance(log_record, text.encode(), auth["user"], "text/plain", "uploaded-archive-member"))
                 log_record["errorGroups"] = [issue["id"] for issue in record_errors(state, current, text, log_id, now(), identifier)]
+                log_record["logRecords"] = add_log_records(state, current, text, log_id, log_record["source"], log_record["dataClassification"])
                 groups += log_record["errorGroups"]
                 state["evidence"].append(log_record)
             if sources:
@@ -865,11 +960,17 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         def record(state: dict):
             incident = find(state, "incidents", incident_id)
             require(auth["user"], "validation:run", incident["environment"])
-            if incident["status"] not in {"Fix Proposed", "Testing", "Root Cause Identified"}:
+            real = state.get("workspaceKind") == "real"
+            # Real workspace: tests run in the owning team's pipeline after a fix is proposed or approved, and are recorded here.
+            allowed = {"Root Cause Identified", "Awaiting Approval", "Approved", "Monitoring", "Fix Proposed", "Testing"} if real else {"Fix Proposed", "Testing", "Root Cause Identified"}
+            if incident["status"] not in allowed:
                 raise HTTPException(409, "A proposed fix is required before recording validation.")
             result = {**payload.model_dump(exclude={"source"}), "id": identifier("TEST"), "incidentId": incident_id, "category": "Manually recorded", "status": "Passed" if payload.failed == 0 else "Failed", "flaky": 0, "coverage": None, "environment": "Staging", "timestamp": now(), "cases": [], "synthetic": False, "source": "Manually recorded, not executed by BEHAVE KYNDRYL: " + redact(payload.source)}
             state["tests"].append(result)
-            incident["status"] = "Testing"
+            if real:
+                result["environment"] = incident["environment"]  # recorded against the incident's own environment; the status follows the mission
+            else:
+                incident["status"] = "Testing"
             audit(state, auth["user"], "Test evidence recorded", result["id"], incident, evidence=result["id"])
             return result
         return database.mutate(record)
@@ -902,7 +1003,9 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             state["knowledge"].append(record)
             audit(state, auth["user"], "Knowledge draft created", record["id"])
             return record
-        return database.mutate(create)
+        created = database.mutate(create)
+        knowledge_search.refresh(lambda: database.read()["knowledge"], [created["id"]])
+        return created
 
     @application.post("/api/v1/knowledge/{record_id}/review")
     def review_knowledge(record_id: str, payload: KnowledgeReview, auth: Auth):
@@ -918,10 +1021,13 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 linked = [find(state, "incidents", incident_id) for incident_id in record["incidents"]]
                 if not linked or not all(incident["status"] == "Closed" and incident["recovery"] for incident in linked):
                     raise HTTPException(409, "An authoritative incident report requires a closed incident and recorded recovery evidence.")
-            record.update(approved=payload.decision == "approve", reviewedAt=now(), version="1.0" if payload.decision == "approve" else "0.1", reviewReason=redact(payload.reason))
+            record.update(approved=payload.decision == "approve", reviewedAt=now(), version="1.0" if payload.decision == "approve" else "0.1", reviewReason=redact(payload.reason),
+                          reviewedBy=auth["user"]["name"])
             audit(state, auth["user"], "Knowledge review recorded", record_id, previous="Draft", next_state="Approved" if record["approved"] else "Draft")
             return record
-        return database.mutate(review)
+        reviewed = database.mutate(review)
+        knowledge_search.refresh(lambda: database.read()["knowledge"], [record_id])  # approved records become searchable by the agents
+        return reviewed
 
     @application.get("/api/v1/admin/access")
     def access_catalog(auth: Auth):
@@ -954,7 +1060,18 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
                 raise HTTPException(422, code.problem or "The repository has no readable source files.")
             findings_found, files_scanned = scan_repository(code, list(payload.scope))
             scanned = (findings_found, files_scanned, code.label)
+        elif payload.source == "incident":
+            # Scan whatever source this incident has: an uploaded ZIP or file, or its repository.
+            target = find(database.read(), "incidents", payload.incidentId or "")
+            require(auth["user"], "workflow:run", target["environment"])
+            code = Projects.load().resolve(target).code
+            if not code.paths():
+                raise HTTPException(422, code.problem or "No source code is connected to this incident. Upload a file or ZIP, or pick a repository.")
+            findings_found, files_scanned = scan_repository(code, list(payload.scope))
+            scanned = (findings_found, files_scanned, code.label)
         elif payload.source == "fixture":
+            if config.workspace == "real":
+                raise HTTPException(409, "This workspace keeps real records only: the example fixture is not available.")
             if config.mode != "demo":
                 raise HTTPException(409, "Synthetic repository replay is available only in the demo workspace.")
             if payload.stack != "Java / Spring Boot":
@@ -1007,9 +1124,35 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             }
             state.setdefault("analyses", []).append(record)
             audit(state, auth["user"], audit_action, record["id"], incident)
+            if scanned:
+                record["securityFindings"] = record_security_findings(state, findings, scanned[2], incident, record["id"])
             return record
 
         return database.mutate(analyze)
+
+    def record_security_findings(state: dict, findings: list[dict], source: str, incident: dict | None, analysis_id: str) -> list[str]:
+        """Security matches from a real repository scan become findings on the Security page (deduplicated, reopened if seen again)."""
+        scanner = {"Hardcoded credential or token detected": "Secret scanning", "Hardcoded bearer token": "Secret scanning",
+                   "Private key reference in repository file": "Secret scanning", "Basic auth credentials embedded in URL": "Secret scanning",
+                   "Container runs as root user": "Container scanning"}
+        ids = []
+        for finding in findings:
+            if finding["category"] != "Security":
+                continue
+            key = f"{source}|{finding['file']}|{finding['line']}|{finding['title']}"
+            record = next((item for item in state["security"] if item.get("key") == key), None)
+            if record is None:
+                record = {"id": identifier("SEC"), "key": key, "title": finding["title"], "category": scanner.get(finding["title"], "Static analysis"),
+                          "severity": finding["severity"], "service": incident["service"] if incident else source.removeprefix("GitHub ").split("@")[0],
+                          "status": "Open", "incidentId": incident["id"] if incident else "", "description": finding["evidence"][0],
+                          "reference": f"{analysis_id} / built-in rule", "file": finding["file"], "line": finding["line"], "guidance": finding["guidance"],
+                          "source": source, "firstSeen": now(), "synthetic": False}
+                state["security"].append(record)
+            elif record["status"] == "Resolved":
+                record["status"] = "Open"  # found again after being marked resolved
+            record.update(lastSeen=now(), reference=f"{analysis_id} / built-in rule")
+            ids.append(record["id"])
+        return ids
 
     class GitHubAnalysisInput(StrictModel):
         fileName: str = Field(min_length=1, max_length=200)

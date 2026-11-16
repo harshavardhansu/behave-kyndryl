@@ -12,9 +12,9 @@ import {
   GitBranch,
   Upload,
 } from 'lucide-react'
-import { useIncident, useWorkspace } from '../context'
+import { useIncident, useRealWorkspace, useWorkspace } from '../context'
 import type { LogRecord } from '../types'
-import { dateTime, number, time } from '../lib/format'
+import { dateTime, measured, time } from '../lib/format'
 import {
   Badge,
   Button,
@@ -43,26 +43,30 @@ interface ErrorGroup {
 export function Observability() {
   const { data, environment, can, setEvidenceFor } = useWorkspace()
   const incident = useIncident()
+  const real = useRealWorkspace()
   const [params] = useSearchParams()
   const [tab, setTab] = useState('Log explorer')
   const [service, setService] = useState(
     params.get('service') || 'All services'
   )
   const [level, setLevel] = useState('All levels')
-  const [range, setRange] = useState('Last hour')
+  // Uploaded logs keep their own timestamps (often days old), so a real workspace starts on "All time".
+  const [range, setRange] = useState(real ? 'All time' : 'Last hour')
   const [field, setField] = useState('traceId')
   const [fieldValue, setFieldValue] = useState('')
   const deferredFieldValue = useDeferredValue(fieldValue)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [traceId, setTraceId] = useState('trace-a83f12')
+  const [traceId, setTraceId] = useState(real ? '' : 'trace-a83f12')
   const anchor = Math.max(
     new Date(data.snapshotAt).getTime(),
     ...data.logs.map((log) => new Date(log.timestamp).getTime())
   )
   const cutoff =
-    anchor -
-    (range === 'Last 15 minutes' ? 15 : range === 'Last hour' ? 60 : 1440) *
-      60_000
+    range === 'All time'
+      ? 0
+      : anchor -
+        (range === 'Last 15 minutes' ? 15 : range === 'Last hour' ? 60 : 1440) *
+          60_000
   const logs = data.logs
     .filter(
       (log) =>
@@ -201,7 +205,7 @@ export function Observability() {
       <div className="module-context-bar">
         <IncidentSelector />
         <Badge tone="outline">
-          {environment} / Snapshot & imported records
+          {real ? `${environment} / Lines from uploaded logs` : `${environment} / Snapshot & imported records`}
         </Badge>
       </div>
       <div className="log-filter-band">
@@ -231,7 +235,7 @@ export function Observability() {
           value={range}
           onChange={(event) => setRange(event.target.value)}
         >
-          {['Last 15 minutes', 'Last hour', 'Last 24 hours'].map((value) => (
+          {['Last 15 minutes', 'Last hour', 'Last 24 hours', 'All time'].map((value) => (
             <option key={value}>{value}</option>
           ))}
         </Select>
@@ -330,7 +334,8 @@ export function Observability() {
                 value={traceId}
                 onChange={(event) => setTraceId(event.target.value)}
               >
-                {[...new Set([traceId, ...traces])].map((value) => (
+                {!traceId && <option value="">Select a request or trace ID</option>}
+                {[...new Set([traceId, ...traces])].filter(Boolean).map((value) => (
                   <option key={value}>{value}</option>
                 ))}
               </Select>
@@ -397,13 +402,13 @@ export function Observability() {
             </>
           ) : (
             <EmptyState
-              title="No span export available for this trace"
-              description="A correlation ID exists in logs, but it does not supply a complete distributed trace."
+              title={real ? 'No distributed trace is connected' : 'No span export available for this trace'}
+              description={real ? 'Request and correlation IDs are taken from the uploaded log lines. Pick one to see every log line that carries it. Span timings need a tracing connector, which is not connected.' : 'A correlation ID exists in logs, but it does not supply a complete distributed trace.'}
             />
           )}
           <div className="section-spacer" />
           <DataTable
-            data={logs.filter((log) => log.traceId === traceId)}
+            data={traceId ? logs.filter((log) => log.traceId === traceId) : []}
             columns={columns}
             onRowClick={(log) => setSelectedId(log.id)}
             searchPlaceholder="Search records in this trace"
@@ -413,8 +418,8 @@ export function Observability() {
       {tab === 'Service metrics' && (
         <>
           <SectionHeader
-            title="Service telemetry snapshot"
-            caption={`${dateTime(data.snapshotAt)} / no historical metric stream`}
+            title={real ? 'Service status from this workspace\'s records' : 'Service telemetry snapshot'}
+            caption={real ? 'Health comes from open incidents and open errors. Latency, error rate and throughput need a monitoring connector; only the Payment API sandbox is measured.' : `${dateTime(data.snapshotAt)} / no historical metric stream`}
           />
           <div className="service-metric-grid">
             {data.services
@@ -435,27 +440,28 @@ export function Observability() {
                   <dl>
                     <div>
                       <dt>p95 latency</dt>
-                      <dd>
-                        {number(record.latency)}
-                        <small> ms</small>
+                      <dd title={record.healthBasis}>
+                        {measured(record.latency)}
+                        {record.latency !== null && <small> ms</small>}
                       </dd>
                     </div>
                     <div>
                       <dt>Error rate</dt>
-                      <dd>
-                        {record.errorRate}
-                        <small>%</small>
+                      <dd title={record.healthBasis}>
+                        {measured(record.errorRate)}
+                        {record.errorRate !== null && <small>%</small>}
                       </dd>
                     </div>
                     <div>
                       <dt>Throughput</dt>
-                      <dd>
-                        {number(record.rps)}
-                        <small> rps</small>
+                      <dd title={record.healthBasis}>
+                        {measured(record.rps)}
+                        {record.rps !== null && <small> rps</small>}
                       </dd>
                     </div>
                   </dl>
                   <Badge tone="outline">{record.type}</Badge>
+                  {record.healthBasis && <small className="service-basis">{record.healthBasis}</small>}
                 </Link>
               ))}
           </div>

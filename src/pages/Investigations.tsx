@@ -95,6 +95,7 @@ function ModelAssessment() {
 export function Investigations() {
   const { data, setEvidenceFor, can } = useWorkspace()
   const incident = useIncident()
+  const real = data.workspaceKind === 'real'
   const [tab, setTab] = useState('Assessment')
   const [selectedStage, setSelectedStage] = useState(8)
   if (!incident)
@@ -126,7 +127,8 @@ export function Investigations() {
       />
       <div className="module-context-bar">
         <IncidentSelector />
-        <ModelAssessment />
+        {/* Real workspace: hypotheses come from the Root-cause agent of an agent mission, decided by a person. */}
+        {!real && <ModelAssessment />}
         <Link className="text-link" to="/war-room">
           <Network size={15} />
           War Room
@@ -187,7 +189,7 @@ export function Investigations() {
           </ol>
           <div className="pipeline-mode">
             <FlaskConical size={14} />
-            Synthetic workflow
+            {real ? 'Hypotheses from agent missions' : 'Synthetic workflow'}
           </div>
         </aside>
         <section className="investigation-main">
@@ -292,9 +294,9 @@ export function Investigations() {
                 ))}
               </div>
               <Notice title="Validation not implied by confidence">
-                A plausible diagnosis is not a validated resolution. In this
-                workspace, test replay and recovery observations are explicitly
-                synthetic.
+                {real
+                  ? 'A plausible diagnosis is not a validated resolution. A fix counts as verified only when it was measured (Payment API sandbox) or a person recorded what they observed after applying it.'
+                  : 'A plausible diagnosis is not a validated resolution. In this workspace, test replay and recovery observations are explicitly synthetic.'}
               </Notice>
               <Link className="button button-secondary" to="/testing">
                 Open validation centre
@@ -311,12 +313,12 @@ export function Investigations() {
               <Notice
                 title={
                   selectedStage < currentStage
-                    ? 'Available in the synthetic scenario'
+                    ? real ? 'Reached by this incident' : 'Available in the synthetic scenario'
                     : 'Pending workflow stage'
                 }
               >
                 {selectedStage < currentStage
-                  ? 'The current demo snapshot includes observations for this stage. Inspect the linked evidence and persisted task history before drawing a conclusion.'
+                  ? real ? 'This incident has passed this stage. The linked evidence and the mission record show what was found and who decided.' : 'The current demo snapshot includes observations for this stage. Inspect the linked evidence and persisted task history before drawing a conclusion.'
                   : 'This stage requires the preceding workflow evidence, required permissions and any configured approval gates.'}
               </Notice>
               <dl>
@@ -332,7 +334,7 @@ export function Investigations() {
                   {evidence.length} linked records
                 </KeyValue>
                 <KeyValue label="Model provider">
-                  Not connected / deterministic demo replay
+                  {real ? (data.aiMode ?? 'Not connected') : 'Not connected / deterministic demo replay'}
                 </KeyValue>
               </dl>
               <h3 className="detail-section-title">Available source records</h3>
