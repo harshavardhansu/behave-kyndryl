@@ -194,6 +194,11 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         application.state.mission_brain.sandbox = application.state.sandbox_control
     sandbox_operation_lock = Lock()
     rate_buckets: dict[str, deque] = defaultdict(deque)
+
+    def public_block(action: str):
+        """Shared, open judge site: refuse actions that would damage the workspace for everyone else."""
+        if config.public_demo:
+            raise HTTPException(403, f"{action} is turned off on the public judge site, so the shared workspace stays intact for every visitor.")
     jwks = jwt.PyJWKClient(f"https://login.microsoftonline.com/{config.azure_tenant_id}/discovery/v2.0/keys", cache_keys=True, timeout=5) if config.mode == "production" else None
 
     @application.middleware("http")
@@ -201,11 +206,12 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         host = request.url.hostname or ""
         if config.mode == "demo" and host not in {"localhost", "127.0.0.1", "::1", "testserver"}:
             extra_hosts = {item.strip().lower() for item in config.demo_hosts.split(",") if item.strip()}
-            if host.lower() not in extra_hosts or not config.require_platform_auth:
+            if host.lower() not in extra_hosts or not (config.require_platform_auth or config.public_demo):
                 return JSONResponse(status_code=403, content={"detail": "Demo access is restricted to loopback hosts."})
             # Behind Azure Container Apps sign-in: every request except the health probe must carry the
-            # signed-in user that the platform adds (and strips from client requests).
-            if request.url.path != "/api/v1/health" and not request.headers.get("x-ms-client-principal-id"):
+            # signed-in user that the platform adds (and strips from client requests). The public judge site has no
+            # platform sign-in; its protection is the blocked actions below plus the AI budget and rate limits.
+            if config.require_platform_auth and request.url.path != "/api/v1/health" and not request.headers.get("x-ms-client-principal-id"):
                 return JSONResponse(status_code=401, content={"detail": "Sign in required."})
         origin = request.headers.get("origin", "")
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -404,6 +410,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     def sync_foundry_agents(payload: FoundrySyncInput, auth: Auth):
         """Create or update the agents in the Azure AI Foundry project (needs Microsoft Entra sign-in)."""
         require(auth["user"], "admin:write")
+        public_block("Re-creating the Foundry agents")
         service = application.state.mission_brain.agents if hasattr(application.state.mission_brain, "agents") else FoundryAgentService(config, database)
         try:
             results = service.provision(payload.roles or None, payload.force)
@@ -577,6 +584,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         Backs up the current data first. Demo mode only.
         """
         require(auth["user"], "admin:write")
+        public_block("Clearing the workspace")
         if config.mode != "demo":
             raise HTTPException(403, "Demo data can only be reset in demo mode.")
         if config.workspace == "real" and payload.mode != "real":
@@ -1037,6 +1045,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.put("/api/v1/admin/policy")
     def update_policy(payload: PolicyInput, auth: Auth):
         require(auth["user"], "admin:write")
+        public_block("Changing the workspace policy")
 
         def update(state: dict):
             previous = json.dumps(state["policy"])

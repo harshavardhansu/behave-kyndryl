@@ -314,6 +314,11 @@ class Project:
     logs: Any = field(default_factory=LocalLogs)
 
 
+def _public_demo() -> bool:
+    """On the public judge site no pull request is ever opened on a real repository, whatever projects.json says."""
+    return os.environ.get("AGENTICA_PUBLIC_DEMO", "").strip().lower() in {"1", "true", "yes"}
+
+
 def _under(base: Path, folder: Path) -> bool:
     return folder.is_dir() and folder.resolve().is_relative_to(base.resolve())
 
@@ -352,7 +357,7 @@ class Projects:
         if kind == "github" and settings.get("repo"):
             return GitHubCode(str(settings["repo"]), str(settings.get("ref") or ""), str(settings.get("path") or ""),
                               str(settings.get("api") or "https://api.github.com"), token=self.token,
-                              pull_requests=settings.get("pull_requests") is True)
+                              pull_requests=settings.get("pull_requests") is True and not _public_demo())
         if kind == "folder" and settings.get("path"):
             folder = (PROJECT_ROOT / str(settings["path"])).resolve()
             return LocalCode(folder) if _under(PROJECT_ROOT, folder) else NoCode()

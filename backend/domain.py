@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     projects_file: str = Field("", validation_alias="AGENTICA_PROJECTS_FILE")  # which project list to use (default: projects.json)
     github_use_cli: bool = Field(False, validation_alias="AGENTICA_GITHUB_USE_CLI")  # local development: borrow the token of the signed-in GitHub CLI
     require_platform_auth: bool = Field(False, validation_alias="AGENTICA_REQUIRE_PLATFORM_AUTH")
+    # Public judge site: the cloud host is open without platform sign-in (visitors pick a demo role), and the
+    # actions that could damage the shared workspace or reach outside it are turned off (see PUBLIC_DEMO_BLOCKED).
+    public_demo: bool = Field(False, validation_alias="AGENTICA_PUBLIC_DEMO")
 
 
 def now() -> str:
