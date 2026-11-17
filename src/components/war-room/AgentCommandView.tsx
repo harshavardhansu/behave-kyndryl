@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import {
     Activity,
     ArrowDown,
@@ -15,7 +16,6 @@ import {
     LayoutDashboard,
     Lightbulb,
     Lock,
-    LockOpen,
     Maximize,
     Microscope,
     Radar,
@@ -38,7 +38,11 @@ import './agent-command.css'
 /* Model                                                               */
 /* ------------------------------------------------------------------ */
 
-type SquadState = 'upcoming' | 'active' | 'done' | 'skipped'
+type SquadState = 'upcoming' | 'active' | 'waiting' | 'done' | 'failed' | 'skipped' | 'unreached'
+
+const STATE_LABEL: Record<SquadState, string> = {
+    upcoming: 'Upcoming', active: 'Active', waiting: 'Waiting', done: 'Done', failed: 'Failed', skipped: 'Not needed', unreached: 'Not reached',
+}
 
 interface SquadDefinition {
     id: string
@@ -132,6 +136,8 @@ interface FanItem {
     icon: LucideIcon
     tone: FanTone
     evidenceId?: string
+    /** Waiting on a person: the only fan item that pulses. */
+    waiting?: boolean
 }
 
 const TONE_COLOR: Record<FanTone, string> = {
@@ -207,7 +213,7 @@ function buildFans({
 
     const approvalTone: FanTone = approval?.status === 'Approved' ? 'good' : approval?.status === 'Rejected' ? 'bad' : approval ? 'warn' : 'neutral'
     const govern: FanItem[] = [
-        { key: 'approval', label: 'Human approval', detail: approval ? `Human approval · ${approval.status}${approval.reviewedBy ? ` by ${approval.reviewedBy}` : ''}` : 'Human approval · not requested', icon: ShieldCheck, tone: approvalTone },
+        { key: 'approval', label: 'Change approval', detail: approval ? `Change approval · ${approval.status}${approval.reviewedBy ? ` by ${approval.reviewedBy}` : ''}` : 'Change approval · not requested', icon: ShieldCheck, tone: approvalTone, waiting: approval?.status === 'Pending' },
         { key: 'deploy', label: 'Deployment', detail: `Deployment · ${stage >= 6 ? 'recorded' : 'not started'}`, icon: Rocket, tone: stage >= 6 ? 'good' : 'neutral' },
         { key: 'recovery', label: 'Recovery', detail: `Recovery verification · ${incident.recovery ? 'recorded' : 'not recorded'}`, icon: HeartPulse, tone: incident.recovery ? 'good' : 'neutral' },
         { key: 'closure', label: 'Closure', detail: `Closure · ${incident.status === 'Closed' ? 'closed' : 'open'}`, icon: Flag, tone: incident.status === 'Closed' ? 'good' : 'neutral' },
@@ -223,16 +229,30 @@ export interface MissionView {
     skipped: { role: string; name: string; reason: string }[]
     fixApproved: boolean
     hasMission: boolean
+    /** The human decisions of the current mission round, in order. */
+    gates?: HumanGate[]
+}
+
+export interface HumanGate {
+    type: string
+    label: string
+    state: 'approved' | 'rejected' | 'waiting' | 'upcoming'
+    decision?: string
+    by?: string
 }
 
 function squadState(squad: SquadDefinition, stage: number, members: Agent[], mission?: MissionView): SquadState {
+    // What the squad's agents are doing right now decides its state (and therefore its animation).
+    if (members.some((agent) => agent.status === 'Failed')) return 'failed'
+    if (members.some((agent) => agent.status === 'Running')) return 'active'
+    if (members.some((agent) => agent.status === 'Waiting for Human Approval' || agent.status === 'Waiting for Evidence')) return 'waiting'
     if (mission) {
         if (!members.length) return mission.hasMission ? 'skipped' : 'upcoming'
-        if (members.some((agent) => agent.status === 'Running')) return 'active'
-        if (members.every((agent) => agent.status === 'Completed')) return 'done'
+        if (members.every((agent) => agent.status === 'Completed' || agent.status === 'Cancelled')) {
+            return members.some((agent) => agent.status === 'Completed') ? 'done' : 'unreached'
+        }
         return 'upcoming'
     }
-    if (members.some((agent) => agent.status === 'Running')) return 'active'
     if (stage > squad.stages[squad.stages.length - 1]) return 'done'
     if (squad.stages.includes(stage)) return 'active'
     return 'upcoming'
@@ -364,25 +384,29 @@ function HexBadge({ color, icon: Icon, size, dim = false }: { color: string; ico
 function FanNode({ item, color, style, onSelectEvidence, matched }: { item: FanItem; color: string; style: CSSProperties; onSelectEvidence: (id: string) => void; matched: boolean }) {
     const Icon = item.icon
     const toneColor = TONE_COLOR[item.tone]
-    const content = (
-        <>
-            <Icon size={14} strokeWidth={2.2} />
-            <span className="cmd-fan-tip" role="tooltip">{item.detail}</span>
-        </>
-    )
-    const className = `cmd-fan tone-${item.tone} ${matched ? '' : 'is-dim'}`
+    const className = `cmd-fan tone-${item.tone} ${item.waiting ? 'is-waiting' : ''} ${matched ? '' : 'is-dim'}`
     const fanStyle = { ...style, '--fan-color': toneColor, '--squad-color': color } as CSSProperties
-    if (item.evidenceId) {
-        return (
-            <button type="button" className={className} style={fanStyle} aria-label={item.detail} onClick={() => onSelectEvidence(item.evidenceId!)}>
-                {content}
-            </button>
-        )
-    }
-    return (
+    const trigger = item.evidenceId ? (
+        <button type="button" className={className} style={fanStyle} aria-label={item.detail} onClick={() => onSelectEvidence(item.evidenceId!)}>
+            <Icon size={14} strokeWidth={2.2} />
+        </button>
+    ) : (
         <span className={className} style={fanStyle} aria-label={item.detail} tabIndex={0}>
-            {content}
+            <Icon size={14} strokeWidth={2.2} />
         </span>
+    )
+    // The detail is drawn above the page (not inside the canvas, which clips its overflow) and moves to stay on screen.
+    return (
+        // disableHoverableContent: the icons are stacked tightly, so a box must close as soon as the pointer leaves its icon
+        <Tooltip.Root disableHoverableContent>
+            <Tooltip.Trigger asChild>{trigger}</Tooltip.Trigger>
+            <Tooltip.Portal container={typeof document === 'undefined' ? undefined : (document.fullscreenElement as HTMLElement | null) ?? undefined}>
+                <Tooltip.Content className="tooltip cmd-fan-tooltip" side="top" sideOffset={8} collisionPadding={12}>
+                    {item.detail}
+                    <Tooltip.Arrow />
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
     )
 }
 
@@ -425,7 +449,7 @@ function SquadCard({
         <div className={`cmd-card is-${state}`} style={{ '--squad-color': squad.color } as CSSProperties}>
             <div className="cmd-card-head">
                 <strong>{squad.name}</strong>
-                <span className={`cmd-state is-${state}`}>{state === 'done' ? 'Done' : state === 'active' ? 'Active' : state === 'skipped' ? 'Not needed' : 'Upcoming'}</span>
+                <span className={`cmd-state is-${state}`}>{STATE_LABEL[state]}</span>
             </div>
             <small className="cmd-card-caption">{squad.caption}</small>
             <ul className={`cmd-members ${expanded ? 'is-expanded' : ''}`}>
@@ -616,7 +640,6 @@ export function AgentCommandView({
         (!normalizedQuery || agent.name.toLowerCase().includes(normalizedQuery) || agent.role.toLowerCase().includes(normalizedQuery))
     const fanMatches = (item: FanItem) => !normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.detail.toLowerCase().includes(normalizedQuery)
 
-    const approvalLocked = mission ? !mission.fixApproved : approval?.status !== 'Approved'
     const caption = mission ? mission.caption : hubCaption(incident)
     const hubRunning = mission ? mission.running : incident.workflowStatus === 'Running'
     const skippedBySquad = (squad: SquadDefinition) => (mission?.skipped ?? []).filter((item) => squad.roles.includes(item.role))
@@ -667,6 +690,34 @@ export function AgentCommandView({
                 <strong>{caption}</strong>
             </span>
         </button>
+    )
+
+    // One place for human approval: the mission's four decisions, under the Orchestrator that asks for them.
+    const gates: HumanGate[] = mission?.gates ?? [
+        { type: 'fix', label: 'Change', state: approval?.status === 'Approved' ? 'approved' : approval?.status === 'Rejected' ? 'rejected' : approval ? 'waiting' : 'upcoming', by: approval?.reviewedBy ?? undefined },
+    ]
+    const waitingGate = gates.find((gate) => gate.state === 'waiting')
+    const approvalsStrip = (
+        <div className={`cmd-approvals ${waitingGate ? 'is-waiting' : ''}`} role="group" aria-label="Human approval">
+            <span className="cmd-approvals-title">
+                {waitingGate ? <Lock size={12} /> : <ShieldCheck size={12} />}
+                {waitingGate ? `Human approval needed: ${waitingGate.label.toLowerCase()}` : 'Human approval'}
+            </span>
+            <ol>
+                {gates.map((gate) => {
+                    const Icon = gate.state === 'approved' ? CircleCheck : gate.state === 'rejected' ? CircleX : gate.state === 'waiting' ? Lock : CircleDashed
+                    const status = gate.state === 'approved' ? `${gate.decision === 'handoff' ? 'handed over' : gate.decision === 'resolve' ? 'resolved' : 'approved'}${gate.by ? ` by ${gate.by}` : ''}`
+                        : gate.state === 'rejected' ? `${gate.decision === 'iterate' ? 'sent back' : gate.decision === 'escalate' ? 'escalated' : 'rejected'}${gate.by ? ` by ${gate.by}` : ''}`
+                        : gate.state === 'waiting' ? 'waiting for a person' : 'not reached yet'
+                    return (
+                        <li key={gate.type} className={`is-${gate.state}`} title={`${gate.label}: ${status}`} aria-label={`${gate.label}: ${status}`}>
+                            <Icon size={11} strokeWidth={2.4} />
+                            {gate.label}
+                        </li>
+                    )
+                })}
+            </ol>
+        </div>
     )
 
     const squadNode = (squad: SquadDefinition, index: number, state: SquadState, sizePx: number) => {
@@ -727,7 +778,7 @@ export function AgentCommandView({
                                     const flowing = state === 'active' || (!mission && squad.id !== gateSquadId && incident.workflowStatus === 'Running' && state !== 'done')
                                     const selectedHere = (membersBySquad[squad.id] ?? []).some((agent) => agent.id === selectedId)
                                     const packetDuration = flowing ? 1.8 : state === 'done' ? 3.6 : 5.2
-                                    const showPackets = !reducedMotion && state !== 'skipped'
+                                    const showPackets = !reducedMotion && flowing   // data moves only where agents are working
                                     return (
                                         <g key={squad.id} className={`cmd-link-group is-${state} ${selectedHere ? 'is-selected' : ''}`} style={{ '--squad-color': squad.color, '--delay': `${0.9 + order * 0.12}s` } as CSSProperties}>
                                             <path className="cmd-link-draw" d={layout.hubPath} pathLength={1} />
@@ -776,16 +827,6 @@ export function AgentCommandView({
                                                 style={{ left: layout.fanX, top: layout.fanYs[fanIndex], '--delay': `${1.45 + index * 0.08 + fanIndex * 0.05}s` } as CSSProperties}
                                             />
                                         ))}
-                                        {layout.gate && (
-                                            <span
-                                                className={`cmd-gate ${approvalLocked ? 'is-locked' : 'is-open'}`}
-                                                style={{ left: layout.gate.x, top: layout.gate.y } as CSSProperties}
-                                                title={approvalLocked ? `Human approval required before release${approval ? ` (${approval.status})` : ''}` : `Released by human approval${approval?.reviewedBy ? ` from ${approval.reviewedBy}` : ''}`}
-                                            >
-                                                {approvalLocked ? <Lock size={12} /> : <LockOpen size={12} />}
-                                                <span>Human approval</span>
-                                            </span>
-                                        )}
                                     </div>
                                 )
                             })}
@@ -795,12 +836,16 @@ export function AgentCommandView({
                                     {hubNode}
                                 </div>
                             )}
+                            {/* top centre: clear of every squad, card and link for any number of squads */}
+                            <div className="cmd-approvals-slot" style={{ left: geometry.hub.x, top: 14 } as CSSProperties}>
+                                {approvalsStrip}
+                            </div>
                         </>
                     )}
 
                     {compact && (
                         <div className="cmd-compact">
-                            {hubNode && <div className="cmd-compact-hub">{hubNode}</div>}
+                            {hubNode && <div className="cmd-compact-hub">{hubNode}{approvalsStrip}</div>}
                             {squads.map((squad, index) => {
                                 const state = stateOf(squad)
                                 return (
@@ -817,11 +862,6 @@ export function AgentCommandView({
                                             onSelect={onSelect}
                                             footer={
                                                 <span className="cmd-compact-fans">
-                                                    {squad.id === gateSquadId && (
-                                                        <span className={`cmd-gate inline ${approvalLocked ? 'is-locked' : 'is-open'}`}>
-                                                            {approvalLocked ? <Lock size={11} /> : <LockOpen size={11} />}
-                                                        </span>
-                                                    )}
                                                     {fansOf(squad).map((item) => (
                                                         <FanNode key={item.key} item={item} color={squad.color} matched={fanMatches(item)} onSelectEvidence={onSelectEvidence} style={{}} />
                                                     ))}

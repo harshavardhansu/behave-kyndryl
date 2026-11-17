@@ -256,6 +256,10 @@
 .cmd-hub .cmd-hex {
     z-index: 2;
     filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.12)) drop-shadow(0 0 16px rgba(255, 70, 45, 0.35));
+}
+
+/* The Orchestrator only "beats" while the mission is analysing or working */
+.cmd-hub.is-running .cmd-hex {
     animation: cmd-heartbeat 3.2s ease-in-out infinite;
 }
 
@@ -275,15 +279,11 @@
     height: 120%;
     border: 2px solid rgba(255, 70, 45, 0.45);
     border-radius: 50%;
-    animation: cmd-ripple 3.2s ease-out infinite;
-}
-
-.cmd-hub-ripple.second {
-    animation-delay: 1.6s;
+    opacity: 0;
 }
 
 .cmd-hub.is-running .cmd-hub-ripple {
-    animation-duration: 1.8s;
+    animation: cmd-ripple 1.8s ease-out infinite;
 }
 
 .cmd-hub.is-running .cmd-hub-ripple.second {
@@ -298,6 +298,9 @@
     height: 150%;
     border: 1.5px dashed rgba(41, 112, 122, 0.35);
     border-radius: 50%;
+}
+
+.cmd-hub.is-running .cmd-hub-orbit {
     animation: cmd-rotate 22s linear infinite;
 }
 
@@ -357,7 +360,7 @@
     gap: 10px;
 }
 
-.cmd-squad .cmd-hex {
+.cmd-squad.is-active .cmd-hex {
     animation: cmd-float 5s ease-in-out var(--float-delay, 0s) infinite;
 }
 
@@ -378,6 +381,9 @@
     border-radius: 50%;
     background: var(--squad-color);
     box-shadow: 0 0 0 1px var(--squad-color);
+}
+
+.cmd-squad.is-active .cmd-port {
     animation: cmd-blink 2.4s ease-in-out infinite;
 }
 
@@ -531,9 +537,33 @@
     color: #0e6027;
 }
 
-.cmd-state.is-upcoming {
+.cmd-state.is-upcoming,
+.cmd-state.is-unreached {
     background: #f2f2f2;
     color: var(--cmd-muted);
+}
+
+.cmd-state.is-waiting {
+    background: #fcf4d6;
+    color: #8e6a00;
+}
+
+.cmd-state.is-failed {
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.cmd-squad.is-unreached .cmd-hex,
+.cmd-squad.is-waiting .cmd-hex {
+    opacity: 0.85;
+}
+
+.cmd-squad.is-failed .cmd-squad-pill {
+    border-color: #da1e28;
+}
+
+.cmd-card.is-failed {
+    border-top-color: #da1e28;
 }
 
 .cmd-members {
@@ -700,8 +730,8 @@ button.cmd-fan {
     outline: none;
 }
 
-/* Items waiting on something pulse gently */
-.cmd-fan.tone-warn::after {
+/* Only items waiting on a person pulse */
+.cmd-fan.is-waiting::after {
     content: '';
     position: absolute;
     inset: -4px;
@@ -714,32 +744,7 @@ button.cmd-fan {
     opacity: 0.25 !important;
 }
 
-.cmd-fan-tip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    z-index: 30;
-    width: max-content;
-    max-width: 240px;
-    padding: 6px 9px;
-    border-radius: 4px;
-    background: #262626;
-    color: #ffffff;
-    font-size: 11px;
-    line-height: 1.4;
-    text-align: left;
-    white-space: normal;
-    pointer-events: none;
-    opacity: 0;
-    transform: translateX(-50%) translateY(4px);
-    transition: opacity 0.15s, transform 0.15s;
-}
 
-.cmd-fan:hover .cmd-fan-tip,
-.cmd-fan:focus-visible .cmd-fan-tip {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-}
 
 /* ---------- Human approval gate ---------- */
 
@@ -940,16 +945,7 @@ button.cmd-fan {
     opacity: 1;
 }
 
-.cmd-compact-fans .cmd-fan-tip {
-    right: 0;
-    left: auto;
-    transform: translateY(4px);
-}
 
-.cmd-compact-fans .cmd-fan:hover .cmd-fan-tip,
-.cmd-compact-fans .cmd-fan:focus-visible .cmd-fan-tip {
-    transform: none;
-}
 
 @container (max-width: 520px) {
     .cmd-toolbar-spacer {
@@ -1336,4 +1332,96 @@ button.cmd-fan {
     .cmd-hub-ripple {
         display: none;
     }
+}
+
+/* Fan details: rendered in a portal, so the canvas never clips them; wraps long evidence text. */
+.cmd-fan-tooltip {
+    max-width: 280px;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+/* ---------- Human approval: one shared place, under the Orchestrator ---------- */
+
+.cmd-approvals-slot {
+    position: absolute;
+    z-index: 4;
+    transform: translateX(-50%);
+    opacity: 0;
+    animation: cmd-fade-in 0.4s ease-out 1.5s forwards;
+}
+
+.cmd-approvals {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 7px 10px 8px;
+    border: 1px solid #e3e3e3;
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.cmd-approvals.is-waiting {
+    border-color: #f1c21b;
+}
+
+.cmd-approvals-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #525252;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.cmd-approvals.is-waiting .cmd-approvals-title {
+    color: #8e6a00;
+}
+
+.cmd-approvals ol {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.cmd-approvals li {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    background: #f6f6f6;
+    color: #6f6f6f;
+    font-size: 10.5px;
+    white-space: nowrap;
+}
+
+.cmd-approvals li.is-approved {
+    border-color: #a7f0ba;
+    background: #defbe6;
+    color: #0e6027;
+}
+
+.cmd-approvals li.is-rejected {
+    border-color: #ffb3b8;
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.cmd-approvals li.is-waiting {
+    border-color: #f1c21b;
+    background: #fcf4d6;
+    color: #8e6a00;
+    animation: cmd-glow 2s ease-in-out infinite;
+}
+
+.cmd-compact-hub .cmd-approvals {
+    margin-top: 10px;
 }

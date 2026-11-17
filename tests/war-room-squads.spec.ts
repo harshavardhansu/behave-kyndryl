@@ -88,6 +88,16 @@ test('War Room lays out any number of squads without overlap', async ({ page }) 
   }
   const hub = (await page.locator('.cmd-hub').boundingBox())!
   for (const box of boxes) expect(overlaps(box, hub)).toBe(false)
+  // The shared human-approval strip sits under the Orchestrator, clear of every card and squad.
+  const approvals = (await page.locator('.cmd-stage .cmd-approvals').boundingBox())!
+  expect(overlaps(approvals, hub), 'approval strip overlaps the Orchestrator').toBe(false)
+  for (const [index, box] of boxes.entries()) expect(overlaps(approvals, box), `approval strip overlaps card ${index + 1}`).toBe(false)
+  const squadBoxes = await page.locator('.cmd-stage .cmd-squad').evaluateAll((elements) => elements.map((element) => {
+    const rect = element.getBoundingClientRect()
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+  }))
+  for (const [index, box] of squadBoxes.entries()) expect(overlaps(approvals, box), `approval strip overlaps squad ${index + 1}`).toBe(false)
+  await expect(page.locator('.cmd-approvals li')).toHaveText(['Team', 'Root cause', 'Fix', 'Outcome'])
 
   // A squad of 6 shows 3 agents and "+3 more"; expanding keeps the card's height budget (scrolls inside).
   const investigate = page.locator('.cmd-card').filter({ hasText: 'Detection & evidence' })

@@ -47,6 +47,14 @@ import {
 import { useIncident, useWorkspace } from '../context'
 import type { Dependency, Service } from '../types'
 import type { MissionView } from '../components/war-room/AgentCommandView'
+
+/** The four decisions people make in every mission round, in order. */
+const HUMAN_GATES = [
+  { type: 'team', label: 'Team' },
+  { type: 'root-cause', label: 'Root cause' },
+  { type: 'fix', label: 'Fix' },
+  { type: 'resolution', label: 'Outcome' },
+] as const
 import { MissionPanel } from '../components/war-room/MissionPanel'
 import { PaymentSandboxPanel } from '../components/war-room/PaymentSandboxPanel'
 import { latestMission, missionTeam, ROLE_NAMES, specialistCount } from '../lib/missions'
@@ -622,6 +630,13 @@ function WarRoomWorkspace() {
     })),
     fixApproved: Boolean(missionIteration?.decisions.some((decision) => decision.type === 'fix' && decision.decision === 'approve')),
     hasMission: Boolean(missionIteration?.team.length || proposedTeam.length),
+    gates: HUMAN_GATES.map(({ type, label }) => {
+      // the latest decision of this round; a new iteration starts its gates afresh
+      const decision = [...(missionIteration?.decisions ?? [])].reverse().find((item) => item.type === type)
+      const waiting = mission?.pendingGate?.type === type
+      const state = waiting ? 'waiting' : !decision ? 'upcoming' : ['approve', 'resolve', 'handoff'].includes(decision.decision) ? 'approved' : 'rejected'
+      return { type, label, state, decision: decision?.decision, by: decision?.by }
+    }),
   }
   const selectedAgent = missionAgents.find((agent) => agent.id === selectedAgentId)
   const activeApproval = data.approvals
