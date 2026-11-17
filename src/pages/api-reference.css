@@ -1,0 +1,252 @@
+/* API reference: follows the app's light Kyndryl Bridge theme. */
+
+.api-reference {
+    display: grid;
+    gap: 16px;
+}
+
+.api-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: end;
+}
+
+.api-search {
+    position: relative;
+    flex: 1;
+    min-width: 240px;
+}
+
+.api-search svg {
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    color: var(--muted);
+    transform: translateY(-50%);
+}
+
+.api-search input {
+    width: 100%;
+    padding-left: 32px;
+}
+
+.api-incident {
+    display: grid;
+    gap: 4px;
+    min-width: 280px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.api-incident select {
+    max-width: 420px;
+}
+
+.api-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.api-categories button {
+    padding: 4px 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #ffffff;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.api-categories button[aria-pressed='true'] {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+    color: var(--accent-hover);
+    font-weight: 500;
+}
+
+.api-list {
+    display: grid;
+    gap: 12px;
+}
+
+.api-endpoint {
+    display: grid;
+    gap: 8px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #ffffff;
+}
+
+.api-endpoint header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
+.api-endpoint h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.api-endpoint p {
+    margin: 0;
+    color: var(--text);
+    font-size: 13px;
+}
+
+.api-method {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.api-method.is-get {
+    background: var(--accent-tint);
+    color: var(--accent-hover);
+}
+
+.api-method.is-post {
+    background: #fff4f3;
+    color: #b8321f;
+}
+
+.api-path {
+    font-size: 13px;
+    font-weight: 500;
+    word-break: break-all;
+}
+
+.api-effect {
+    margin-left: auto;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+}
+
+.api-effect.is-read {
+    background: #f2f2f2;
+    color: var(--muted);
+}
+
+.api-effect.is-audit {
+    background: var(--accent-tint);
+    color: var(--accent-hover);
+}
+
+.api-effect.is-write {
+    background: #fcf4d6;
+    color: #8e6a00;
+}
+
+.api-effect.is-destructive {
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.api-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.api-body summary {
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.api-body pre,
+.api-result pre {
+    max-height: 260px;
+    margin: 6px 0 0;
+    padding: 10px 12px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--light);
+    color: var(--text);
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.api-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.api-confirm,
+.api-guarded {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12.5px;
+}
+
+.api-confirm {
+    border: 1px solid #f1c21b;
+    background: #fcf4d6;
+    color: #6b5000;
+}
+
+.api-guarded {
+    border: 1px solid #ffd7d9;
+    background: #fff1f1;
+    color: #a2191f;
+}
+
+.api-hint {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.api-result {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+}
+
+.api-result.is-error {
+    border-left-color: #da1e28;
+}
+
+.api-result-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 12px;
+}
+
+.api-result.is-ok .api-result-head strong {
+    color: #0e6027;
+}
+
+.api-result.is-error .api-result-head strong {
+    color: #a2191f;
+}
+
+.api-result-head code {
+    color: var(--muted);
+    word-break: break-all;
+}
+
+.api-result-head .text-link {
+    margin-left: auto;
+}

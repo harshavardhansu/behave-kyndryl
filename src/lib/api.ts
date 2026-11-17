@@ -49,6 +49,47 @@ export async function request<T>(
   return response.json() as Promise<T>
 }
 
+export interface ProbeResult {
+  status: number
+  ok: boolean
+  ms: number
+  contentType: string
+  preview: string
+}
+
+/** Calls an API endpoint and reports what came back (status, time, body) instead of throwing. Used by the API reference. */
+export async function probe(
+  path: string,
+  init: { method: string; json?: unknown; form?: FormData }
+): Promise<ProbeResult> {
+  const headers = new Headers()
+  let body: BodyInit | undefined
+  if (init.json !== undefined) {
+    headers.set('Content-Type', 'application/json')
+    body = JSON.stringify(init.json)
+  }
+  if (init.form) body = init.form
+  if (init.method !== 'GET') {
+    headers.set('X-CSRF-Token', csrfToken)
+    headers.set('Idempotency-Key', crypto.randomUUID())
+  }
+  const started = performance.now()
+  try {
+    const response = await fetch(`/api/v1${path}`, { method: init.method, headers, body, credentials: 'same-origin' })
+    const contentType = response.headers.get('content-type') ?? ''
+    let preview: string
+    if (contentType.includes('json')) preview = JSON.stringify(await response.json(), null, 2)
+    else if (contentType.startsWith('text/')) preview = await response.text()
+    else {
+      const blob = await response.blob()
+      preview = `${contentType || 'Binary content'} · ${blob.size.toLocaleString()} bytes`
+    }
+    return { status: response.status, ok: response.ok, ms: Math.round(performance.now() - started), contentType, preview }
+  } catch {
+    return { status: 0, ok: false, ms: Math.round(performance.now() - started), contentType: '', preview: 'The API could not be reached.' }
+  }
+}
+
 export function post<T>(path: string, payload: unknown, idempotent = false) {
   return request<T>(path, {
     method: 'POST',
