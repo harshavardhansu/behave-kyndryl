@@ -46,3 +46,25 @@ demo-video/
 
 # Local project list (may name private repositories)
 projects.local.json
+
+# AI assistant and editor-agent files: never part of the project
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+GEMINI.md
+.cursor/
+.cursorrules
+.windsurfrules
+.github/copilot-instructions.md
+.aider*
+*_PROMPT.md
+*_overview.md
+
+# Presentation material and its tooling (kept locally, not part of the product)
+DEMO_GUIDE.md
+docs/JUDGE_REPORT.md
+docs/report/
+demo/
+scripts/video/
+scripts/_*.mjs
+scripts/stage1a_acceptance.py

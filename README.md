@@ -44,7 +44,7 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 Open **http://127.0.0.1:5173**. You're signed in as a demo **Incident Manager**; switch roles from the profile menu (e.g. **Change Approver** to approve fixes). API docs are at http://127.0.0.1:8000/api/docs.
 
-**Try it in 2 minutes:** open **AI War Room** and select **INC-1043**. Click **Start sandbox**, then **Run workload**, then **Start agent mission**. Approve the team and the root cause, switch to **Change Approver** and approve the fix, and watch the recovery get measured. The full talk track is in **[DEMO_GUIDE.md](DEMO_GUIDE.md)**.
+**Try it in 2 minutes:** open **AI War Room** and select **INC-1043**. Click **Start sandbox**, then **Run workload**, then **Start agent mission**. Approve the team and the root cause, switch to **Change Approver** and approve the fix, and watch the recovery get measured.
 
 **Reset before a demo:** Administration → **Reset demo data** (Administrator role; your data is backed up to `data/backups/` first).
 
@@ -104,7 +104,6 @@ React + TypeScript (Vite)  ──REST──►  FastAPI backend  ──►  SQLi
 | `backend/seed.py`, `backend/seed_stories.py` | Realistic demo data for every incident |
 | `payment_api/` | The Payment API sandbox service and its workload generator |
 | `tests/`, `backend/tests/`, `payment_api/tests/` | Browser (Playwright) and backend (pytest) tests |
-| `final_overview.md` | Full project overview and change history |
 
 **Agents:** Orchestrator plus 13 specialists:
 - Intake
@@ -146,7 +145,7 @@ The tests never call Azure: they use the simulated planner and a fake AI client.
 - Repository URL analysis returns clearly labelled **simulated template findings** (no repository is cloned); GitHub file analysis is rule-based, not AI.
 - The Payment API sandbox can also run in containers (`PAYMENT_SANDBOX_MODE=container`, see `compose.yaml`).
 
-More detail: [final_overview.md](final_overview.md) · [docs/architecture.md](docs/architecture.md) · [docs/implementation-roadmap.md](docs/implementation-roadmap.md)
+More detail: [docs/architecture.md](docs/architecture.md)
 
 ## Agents that investigate (read-only tools)
 
