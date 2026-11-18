@@ -287,13 +287,19 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
 
     Auth = Annotated[dict, Depends(authenticated)]
 
+    workspace_kind = {"value": "demo", "at": -1e9}
+
     @application.get("/api/v1/health")
     def health():
+        """Liveness and readiness probe: must answer fast even while a mission is writing to the database.
+        It checks that the database answers; the workspace kind (a full read) is refreshed at most once a minute."""
         result = {"status": "ok", "database": "AVAILABLE", "mode": config.mode,
                   "execution": "Tool Gateway: Payment API sandbox and opted-in pull requests only, after a separate human approval"}
         try:
             database.check_health()
-            result["workspace"] = database.read().get("workspaceKind", "demo")
+            if monotonic() - workspace_kind["at"] > 60:
+                workspace_kind.update(value=database.read().get("workspaceKind", "demo"), at=monotonic())
+            result["workspace"] = workspace_kind["value"]
         except SQLAlchemyError:
             return JSONResponse(status_code=503, content={**result, "status": "unavailable", "database": "UNAVAILABLE"})
         return result
@@ -617,6 +623,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         target_state = real_workspace(config.mode) if payload.mode == "real" else fresh_workspace() if is_fresh else seed_workspace(True)
         ensure_services(target_state, Projects.load(), now())
         database.reset(target_state)
+        workspace_kind["at"] = -1e9  # the health check reports the new workspace kind straight away
         knowledge_search.refresh(lambda: database.read()["knowledge"])
         action_name = {"real": "Real workspace initialized", "fresh": "Fresh workspace initialized"}.get(payload.mode, "Demo data reset")
         next_state = {"real": "Real workspace (no demonstration records)", "fresh": "Fresh workspace (demo activities cleared)"}.get(payload.mode, "Fresh demo stories")

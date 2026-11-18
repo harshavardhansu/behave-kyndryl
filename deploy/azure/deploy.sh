@@ -104,7 +104,7 @@ env = {
     "AGENTICA_DEMO_STEP_SECONDS": "1.2", "AGENTICA_ALLOWED_ORIGINS": "https://$FQDN" if "$FQDN" else "",
     "AGENTICA_DEMO_HOSTS": "$FQDN", "AGENTICA_REQUIRE_PLATFORM_AUTH": "true",
 }
-health = {"httpGet": {"path": "/api/v1/health", "port": 8000}, "initialDelaySeconds": 10, "periodSeconds": 15}
+health = {"httpGet": {"path": "/api/v1/health", "port": 8000}, "initialDelaySeconds": 10, "periodSeconds": 15, "timeoutSeconds": 5}
 spec = {
     "location": "$LOCATION",
     "identity": {"type": "UserAssigned", "userAssignedIdentities": {"$IDENTITY_ID": {}}},
@@ -120,7 +120,7 @@ spec = {
                 "name": "$APP", "image": "$IMAGE", "resources": {"cpu": 1.0, "memory": "2Gi"},
                 "env": [{"name": k, "value": v} for k, v in env.items() if v],
                 "volumeMounts": [{"volumeName": "data", "mountPath": "/mnt/data"}],
-                "probes": [{"type": "Liveness", **health}, {"type": "Readiness", **health}],
+                "probes": [{"type": "Liveness", **health, "failureThreshold": 6}, {"type": "Readiness", **health}],  # restart only after ~90s unresponsive
             }],
             "scale": {"minReplicas": 1, "maxReplicas": 1},
             "volumes": [{"name": "data", "storageType": "AzureFile", "storageName": "$SHARE",
