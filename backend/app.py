@@ -18,6 +18,7 @@ import jwt
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 from pydantic import Field, ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -175,6 +176,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         openapi_url="/api/openapi.json",
         swagger_ui_parameters={"syntaxHighlight.theme": "monokai", "tryItOutEnabled": True},
     )
+    application.add_middleware(GZipMiddleware, minimum_size=1024)   # the web bundle and JSON travel compressed
     application.state.store = database
     configure_connectors(config)  # connectors and task storage follow this application's settings
     knowledge_search.configure(config)  # organizational memory in Azure AI Search (when configured)
@@ -231,7 +233,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         bucket.append(timestamp)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Cache-Control"] = "no-store"
+        # Hashed build files never change under the same name: let browsers keep them. Everything else stays uncached.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if request.url.path.startswith("/assets/") else "no-store"
         response.headers["Referrer-Policy"] = "same-origin"
         return response
 

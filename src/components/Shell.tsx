@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import {
   Link,
   NavLink,
@@ -294,7 +294,7 @@ export function Shell() {
           </Link>
           <span className="brand-console">Command Centre</span>
         </div>
-        <button className="global-search" onClick={() => setSearchOpen(true)}>
+        <button className="global-search" aria-label="Search your workspace" onClick={() => setSearchOpen(true)}>
           <Search size={18} />
           <span>Search your workspace</span>
         </button>
@@ -571,7 +571,9 @@ export function Shell() {
           id="workspace-main"
           className={`workspace-main ${location.pathname === '/war-room' ? 'war-room-main' : ''}`}
         >
-          <Outlet />
+          <Suspense fallback={<div className="page-loading" role="status" aria-live="polite">Loading…</div>}>
+            <Outlet />
+          </Suspense>
         </main>
         <footer className="workspace-footer">
           <span>

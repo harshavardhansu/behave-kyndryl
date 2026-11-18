@@ -7480,3 +7480,6 @@ button.metric:hover {
 .dependency-table th { text-align: left; font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .dependency-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); word-break: break-word; }
 .service-basis { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+/* Shown for a moment while a page loads its code */
+.page-loading { padding: 32px 24px; color: var(--muted, #6b7280); font-size: 14px; }

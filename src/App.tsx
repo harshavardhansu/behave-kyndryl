@@ -1,4 +1,4 @@
-import { Component } from 'react'
+import { Component, lazy } from 'react'
 import type { ReactNode } from 'react'
 import {
   BrowserRouter,
@@ -12,24 +12,27 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { WorkspaceProvider } from './context'
 import { Shell, navigation } from './components/Shell'
 import { BrandMark, Button, EmptyState, PageHeader } from './components/ui'
-import { Overview } from './pages/Overview'
-import { Incidents, IncidentDetail } from './pages/Incidents'
 import { WorkspaceDialogs } from './components/Forms'
-import { WarRoom } from './pages/WarRoom'
-import { Investigations } from './pages/Investigations'
-import { Agents } from './pages/Agents'
-import { Repositories } from './pages/Repositories'
-import { Testing } from './pages/Testing'
-import { Security } from './pages/Security'
-import { Errors } from './pages/Errors'
-import { Changes } from './pages/Changes'
-import { Observability } from './pages/Observability'
-import { Knowledge } from './pages/Knowledge'
-import { Reports } from './pages/Reports'
-import { Audit } from './pages/Audit'
-import { Administration } from './pages/Administration'
-import { ApiReference } from './pages/ApiReference'
 import { ApiError } from './lib/api'
+
+// Each page is its own chunk, loaded when first visited, so phones download only what they show.
+const Overview = lazy(() => import('./pages/Overview').then((module) => ({ default: module.Overview })))
+const Incidents = lazy(() => import('./pages/Incidents').then((module) => ({ default: module.Incidents })))
+const IncidentDetail = lazy(() => import('./pages/Incidents').then((module) => ({ default: module.IncidentDetail })))
+const WarRoom = lazy(() => import('./pages/WarRoom').then((module) => ({ default: module.WarRoom })))
+const Investigations = lazy(() => import('./pages/Investigations').then((module) => ({ default: module.Investigations })))
+const Agents = lazy(() => import('./pages/Agents').then((module) => ({ default: module.Agents })))
+const Repositories = lazy(() => import('./pages/Repositories').then((module) => ({ default: module.Repositories })))
+const Testing = lazy(() => import('./pages/Testing').then((module) => ({ default: module.Testing })))
+const Security = lazy(() => import('./pages/Security').then((module) => ({ default: module.Security })))
+const Errors = lazy(() => import('./pages/Errors').then((module) => ({ default: module.Errors })))
+const Changes = lazy(() => import('./pages/Changes').then((module) => ({ default: module.Changes })))
+const Observability = lazy(() => import('./pages/Observability').then((module) => ({ default: module.Observability })))
+const Knowledge = lazy(() => import('./pages/Knowledge').then((module) => ({ default: module.Knowledge })))
+const Reports = lazy(() => import('./pages/Reports').then((module) => ({ default: module.Reports })))
+const Audit = lazy(() => import('./pages/Audit').then((module) => ({ default: module.Audit })))
+const Administration = lazy(() => import('./pages/Administration').then((module) => ({ default: module.Administration })))
+const ApiReference = lazy(() => import('./pages/ApiReference').then((module) => ({ default: module.ApiReference })))
 
 const queryClient = new QueryClient({
   defaultOptions: {

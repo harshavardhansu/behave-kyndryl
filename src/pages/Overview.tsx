@@ -1,17 +1,5 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
 import {
   Activity,
   ArrowRight,
@@ -55,6 +43,9 @@ import {
   SectionHeader,
   Select,
 } from '../components/ui'
+
+const TrendChart = lazy(() => import('./OverviewCharts').then((module) => ({ default: module.TrendChart })))
+const HealthDonut = lazy(() => import('./OverviewCharts').then((module) => ({ default: module.HealthDonut })))
 
 export function Overview() {
   const {
@@ -339,62 +330,9 @@ export function Overview() {
             role="img"
             aria-label={real ? 'Incidents opened per day over seven days' : 'Synthetic incident trend over seven days'}
           >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={data.trends}
-                barSize={27}
-                margin={{ top: 12, right: 12, left: -28, bottom: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 4"
-                  vertical={false}
-                  stroke="#ECEDEF"
-                />
-                <XAxis
-                  dataKey="date"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#707378', fontSize: 11 }}
-                  dy={8}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#707378', fontSize: 11 }}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  cursor={{ fill: '#F5F5F5' }}
-                  contentStyle={{
-                    borderRadius: 6,
-                    border: '1px solid #E5E5E5',
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  isAnimationActive={false}
-                  dataKey="other"
-                  name="Medium & low"
-                  stackId="incidents"
-                  fill="#E5E5E5"
-                />
-                <Bar
-                  isAnimationActive={false}
-                  dataKey="high"
-                  name="High"
-                  stackId="incidents"
-                  fill="#8D9095"
-                />
-                <Bar
-                  isAnimationActive={false}
-                  dataKey="critical"
-                  name="Critical"
-                  stackId="incidents"
-                  fill="#F5362A"
-                  radius={[3, 3, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <Suspense fallback={null}>
+              <TrendChart data={data.trends} />
+            </Suspense>
           </div>
           <div className="chart-summary">
             <span>
@@ -434,28 +372,9 @@ export function Overview() {
                 .map((item) => `${item.value} ${item.name}`)
                 .join(', ')}
             >
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    isAnimationActive={false}
-                    data={health}
-                    dataKey="value"
-                    innerRadius={49}
-                    outerRadius={64}
-                    startAngle={90}
-                    endAngle={-270}
-                    paddingAngle={4}
-                    stroke="none"
-                  >
-                    {health.map((item, index) => (
-                      <Cell
-                        key={item.name}
-                        fill={['#45494E', '#D6D7D9', '#F5362A'][index]}
-                      />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              <Suspense fallback={null}>
+                <HealthDonut health={health} />
+              </Suspense>
               <div className="donut-center">
                 <strong>{services.length}</strong>
                 <span>services</span>
