@@ -7583,10 +7583,10 @@ button.metric:hover {
 .header-environment[data-state='open'] { border-color: #29707a; box-shadow: 0 0 0 3px rgba(41, 112, 122, 0.12); }
 .header-environment > svg { color: #6b6e74; transition: transform 0.15s; }
 .header-environment[data-state='open'] > svg { transform: rotate(180deg); }
-[data-env='Production'] > .environment-dot { background: #e5352a; }
-[data-env='Staging'] > .environment-dot { background: #d98a00; }
-[data-env='Development'] > .environment-dot { background: #2f6fd6; }
-[data-env='Sandbox'] > .environment-dot { background: #2e9b5f; }
+/* One red dot only: on the button and on the selected item; the others keep the space so names line up */
+.header-environment > .environment-dot,
+.environment-menu [data-state='checked'] > .environment-dot { background: var(--kyndryl-red, #ff462d); }
+.environment-menu [data-state='unchecked'] > .environment-dot { visibility: hidden; }
 .environment-menu { min-width: 236px; }
 .environment-menu [role='menuitemradio'] {
     outline: none;
