@@ -464,19 +464,23 @@ export function IncidentDetail() {
   ]
   return (
     <div className="page-enter incident-detail">
-      <Link className="back-link" to="/incidents">
-        <ArrowLeft size={14} />
-        Issues & incidents
-      </Link>
-      <div className="detail-title-meta">
-        <span className="mono">{incident.id}</span>
-        <Badge>{incident.severity}</Badge>
-        <Badge tone="outline">{incident.environment}</Badge>
-        <Badge tone="outline">
-          {incident.synthetic ? 'Synthetic incident' : 'User-reported incident'}
-        </Badge>
-      </div>
       <PageHeader
+        top={
+          <>
+            <Link className="back-link" to="/incidents">
+              <ArrowLeft size={14} />
+              Issues & incidents
+            </Link>
+            <div className="detail-title-meta">
+              <span className="mono">{incident.id}</span>
+              <Badge>{incident.severity}</Badge>
+              <Badge tone="outline">{incident.environment}</Badge>
+              <Badge tone="outline">
+                {incident.synthetic ? 'Synthetic incident' : 'User-reported incident'}
+              </Badge>
+            </div>
+          </>
+        }
         title={incident.title}
         description={`${incident.service} / First observed ${dateTime(incident.detectedAt)} / ${incident.owner}`}
         actions={

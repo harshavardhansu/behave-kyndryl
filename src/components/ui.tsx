@@ -136,15 +136,19 @@ export function PageHeader({
   eyebrow,
   description,
   actions,
+  top,
 }: {
   title: string
   eyebrow?: string
   description?: string
   actions?: ReactNode
+  /** Shown inside the banner above the title (a back link, an ID and badges). */
+  top?: ReactNode
 }) {
   return (
     <div className="page-header">
       <div>
+        {top && <div className="page-header-top">{top}</div>}
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}
         <h1>{title}</h1>
         {description && <p>{description}</p>}

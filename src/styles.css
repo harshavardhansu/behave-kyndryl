@@ -7546,3 +7546,21 @@ button.metric:hover {
     .loading-shimmer .brand-product { color: #6f7f86; background: none; }
     .loading-shimmer .brand-kyndryl { color: #ff462d; background: none; }
 }
+
+
+/* Back link, ID and badges sit inside the banner on detail pages, so the banner stays flush at the top */
+.page-header-top {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.page-header-top .back-link {
+    margin-bottom: 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 12px;
+}
+.page-header-top .back-link:hover { color: #ffffff; }
+.page-header-top .detail-title-meta { margin-bottom: 0; }
+.page-header-top .detail-title-meta > .mono { color: rgba(255, 255, 255, 0.82); font-size: 12px; }
