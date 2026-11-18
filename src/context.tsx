@@ -93,7 +93,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [signingIn, setSigningIn] = useState(false)
   const sessionQuery = useQuery<Session | null>({
     queryKey: ['session'],
-    retry: false,
+    // A brief network failure (a deploy swapping revisions) must not strand visitors on the error screen.
+    retry: (count, error) => count < 3 && error instanceof ApiError && (error.status === 0 || error.status >= 500),
+    retryDelay: (attempt) => Math.min(600 * 2 ** attempt, 4000),
     staleTime: Infinity,
     queryFn: async () => {
       if (sessionStorage.getItem('agentica-signed-out')) return null
@@ -223,7 +225,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return <LoadingState />
   if (sessionQuery.error || (dataQuery.error && !dataQuery.data))
     return (
-      <div className="connection-error">
+      <main className="connection-error">
         <div className="loading-brand">
           <BrandMark />
         </div>
@@ -239,14 +241,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           <RefreshCw size={16} /> Retry connection
         </Button>
         <p className="muted">
-          The API must be running at 127.0.0.1:8000. No offline success is
-          simulated.
+          The service may be restarting. Try again in a moment; nothing is
+          shown as successful until the API answers.
         </p>
-      </div>
+      </main>
     )
   if (!sessionQuery.data)
     return (
-      <div className="access-screen">
+      <main className="access-screen">
         <div className="access-panel">
           <div className="loading-brand">
             <BrandMark />
@@ -301,7 +303,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             <LogIn size={18} /> Enter workspace
           </Button>
         </div>
-      </div>
+      </main>
     )
   if (!dataQuery.data) return <LoadingState />
   const session = sessionQuery.data

@@ -38,8 +38,10 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 10_000,
+      // Network blips (status 0, e.g. while a new revision starts) and server errors are retried with backoff.
       retry: (count, error) =>
-        count < 1 && (!(error instanceof ApiError) || error.status >= 500),
+        count < 3 && (!(error instanceof ApiError) || error.status === 0 || error.status >= 500),
+      retryDelay: (attempt) => Math.min(600 * 2 ** attempt, 4000),
     },
     mutations: { retry: false },
   },

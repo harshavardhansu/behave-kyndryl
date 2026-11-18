@@ -476,7 +476,7 @@ export function Notice({
 
 export function LoadingState() {
   return (
-    <div
+    <main
       className="loading-workspace"
       aria-label="Loading workspace"
       role="status"
@@ -491,7 +491,7 @@ export function LoadingState() {
         ))}
       </div>
       <p>Loading workspace records</p>
-    </div>
+    </main>
   )
 }
 

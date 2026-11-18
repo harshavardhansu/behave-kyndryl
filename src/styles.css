@@ -1928,7 +1928,7 @@ button.metric:hover {
 }
 
 .notice p {
-    color: #777a80;
+    color: #4f5258;   /* 7:1 on the notice backgrounds (was #777a80, below 4.5:1 on the red notice) */
     font-size: 11px;
     line-height: 1.7;
     margin-top: 4px;
