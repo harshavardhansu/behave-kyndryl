@@ -474,6 +474,18 @@ export function Notice({
   )
 }
 
+/** The Orchestrator at the centre with agents circling it: the loading mark. */
+export function OrbitLoader() {
+  return (
+    <span className="orbit-loader" aria-hidden="true">
+      <span className="orbit-ring orbit-ring-1"><i /></span>
+      <span className="orbit-ring orbit-ring-2"><i /><i /></span>
+      <span className="orbit-ring orbit-ring-3"><i /></span>
+      <span className="orbit-core" />
+    </span>
+  )
+}
+
 export function LoadingState() {
   return (
     <main
@@ -481,14 +493,9 @@ export function LoadingState() {
       aria-label="Loading workspace"
       role="status"
     >
-      <div className="loading-brand">
+      <OrbitLoader />
+      <div className="loading-brand loading-shimmer">
         <BrandMark />
-      </div>
-      <LoaderCircle className="spin" size={24} />
-      <div className="skeleton-grid">
-        {[1, 2, 3, 4].map((item) => (
-          <div key={item} className="skeleton" />
-        ))}
       </div>
       <p>Loading workspace records</p>
     </main>

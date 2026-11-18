@@ -7483,3 +7483,66 @@ button.metric:hover {
 
 /* Shown for a moment while a page loads its code */
 .page-loading { padding: 32px 24px; color: var(--muted, #6b7280); font-size: 14px; }
+
+
+/* Loading screen: shimmering wordmark and an orbit loader (the Orchestrator with agents circling it) */
+.loading-shimmer .brand-product,
+.loading-shimmer .brand-kyndryl {
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: brand-shimmer 2.4s ease-in-out infinite;
+}
+.loading-shimmer .brand-product { background-image: linear-gradient(110deg, #6f7f86 40%, #d9e1e4 50%, #6f7f86 60%); }
+.loading-shimmer .brand-kyndryl { background-image: linear-gradient(110deg, #ff462d 40%, #ffc2b8 50%, #ff462d 60%); }
+@keyframes brand-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -50% 0; }
+}
+
+.orbit-loader {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    display: block;
+}
+.orbit-core {
+    position: absolute;
+    inset: 38px;
+    border-radius: 50%;
+    background: var(--kyndryl-red, #ff462d);
+    box-shadow: 0 0 0 6px rgba(255, 70, 45, 0.12), 0 0 18px rgba(255, 70, 45, 0.45);
+    animation: orbit-pulse 1.8s ease-in-out infinite;
+}
+.orbit-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px dashed rgba(111, 127, 134, 0.45);
+    animation: orbit-spin linear infinite;
+}
+.orbit-ring i {
+    position: absolute;
+    top: -4px;
+    left: calc(50% - 4px);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6f7f86;
+}
+.orbit-ring-1 { inset: 26px; animation-duration: 2.2s; }
+.orbit-ring-1 i { background: var(--kyndryl-red, #ff462d); width: 6px; height: 6px; top: -3px; left: calc(50% - 3px); }
+.orbit-ring-2 { inset: 13px; animation-duration: 3.6s; animation-direction: reverse; }
+.orbit-ring-2 i:nth-child(2) { top: auto; bottom: -4px; }
+.orbit-ring-3 { inset: 0; animation-duration: 5.4s; }
+@keyframes orbit-spin { to { transform: rotate(360deg); } }
+@keyframes orbit-pulse { 50% { transform: scale(0.82); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .loading-shimmer .brand-product,
+    .loading-shimmer .brand-kyndryl,
+    .orbit-core,
+    .orbit-ring { animation: none; }
+    .loading-shimmer .brand-product { color: #6f7f86; background: none; }
+    .loading-shimmer .brand-kyndryl { color: #ff462d; background: none; }
+}
