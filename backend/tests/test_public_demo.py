@@ -78,3 +78,18 @@ def test_unchanged_workspace_snapshot_comes_back_as_an_empty_304():
         again = client.get("/api/v1/workspace", headers={"If-None-Match": tag})
         assert again.status_code == 304 and again.content == b""
         assert client.get("/api/v1/workspace", headers={"If-None-Match": '"stale"'}).status_code == 200
+
+
+def test_key_agents_run_on_the_advanced_tier_and_the_site_shows_tiers_not_model_names():
+    from backend import model_tiers
+
+    settings = Settings(AGENTICA_MODE="demo", database_url="sqlite:///:memory:",
+                        azure_ai_model_deployment="fast-1-mini", azure_ai_model_deployment_advanced="gpt-9.9")
+    assert model_tiers.deployment(settings, "root-cause") == "gpt-9.9"
+    assert model_tiers.deployment(settings, None) == "gpt-9.9"            # the Orchestrator plans the team
+    assert model_tiers.deployment(settings, "logs") == "fast-1-mini"
+    assert model_tiers.reasoning_effort("gpt-9.9") == "low" and model_tiers.reasoning_effort("fast-1-mini") is None
+    text = model_tiers.public_text(settings, "AI-GENERATED / Azure OpenAI gpt-4.1-mini; root cause by gpt-9.9")
+    assert "gpt" not in text and "fast model" in text and "advanced reasoning model" in text
+    single = Settings(AGENTICA_MODE="demo", database_url="sqlite:///:memory:", azure_ai_model_deployment="gpt-4.1-mini")
+    assert model_tiers.deployment(single, "root-cause") == "gpt-4.1-mini"  # no advanced deployment: one model for all

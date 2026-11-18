@@ -23,6 +23,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from . import model_tiers
 from .ai_client import AIBudget, AIUnavailable, ai_configured, openai_client
 from .data_governance import DataPolicyError, authorize_model_context
 from .domain import Settings, redact
@@ -197,7 +198,8 @@ class FoundryBrain:
     @property
     def mode(self) -> str:
         agents = len(self.agents.provisioned_roles())
-        return f"AI-GENERATED / Azure OpenAI {self.settings.azure_ai_model_deployment}" + (f" + {agents} Foundry agents" if agents else "")
+        models = "Azure OpenAI tiered models" if model_tiers.tiered(self.settings) else "Azure OpenAI model"
+        return f"AI-GENERATED / {models}" + (f" + {agents} Foundry agents" if agents else "")
 
     # -- helpers ---------------------------------------------------------
 
@@ -238,11 +240,12 @@ class FoundryBrain:
         self._authorize(context)
         payload = redact(payload)
         use_agent = role is not None and self.agents.available(role)
+        model = model_tiers.deployment(self.settings, role)
         label = (
             f"Foundry agent {agent_name(role)} v{self.agents.registry()[role]['version']}" if use_agent
-            else f"Azure OpenAI {self.settings.azure_ai_model_deployment}"
+            else f"Azure OpenAI {model_tiers.label(self.settings, role).lower()}"
         )
-        key = AIBudget.cache_key(purpose + (f":agent:{role}" if use_agent else ""), payload, self.settings.azure_ai_model_deployment)
+        key = AIBudget.cache_key(purpose + (f":agent:{role}" if use_agent else ""), payload, model)
         cached = self._cached(key, schema) if tools is None else None  # an investigation must really look things up
         if cached is not None:
             return cached, label
@@ -264,13 +267,15 @@ class FoundryBrain:
             instructions = (agent_instructions(agent) + "\n\n" if agent else "") + task
             try:
                 with openai_client(self.settings) as client:
+                    effort = model_tiers.reasoning_effort(model)
                     response = client.responses.parse(
-                        model=self.settings.azure_ai_model_deployment,
+                        model=model,
                         instructions=instructions,
                         input=json.dumps(payload),
                         text_format=schema,
-                        max_output_tokens=self.settings.ai_max_output_tokens,
+                        max_output_tokens=model_tiers.output_tokens(self.settings, model),
                         store=False,
+                        **({"reasoning": {"effort": effort}} if effort else {}),
                     )
             except AIUnavailable:
                 raise

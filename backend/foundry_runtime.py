@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 from urllib.parse import urlparse
 
+from . import model_tiers
 from .ai_client import AIUnavailable, entra_credential
 from .domain import Settings, now
 from .foundry_agents import AGENTS_CATALOG, AgentDefinition, get_all_agents
@@ -148,7 +149,7 @@ class FoundryAgentService:
         if self.settings.agent_mode == "model" or not entra_configured(self.settings):
             return False
         entry = self.registry().get(role)
-        return bool(entry and entry.get("version") and entry.get("model") == self.settings.azure_ai_model_deployment)
+        return bool(entry and entry.get("version") and entry.get("model") == model_tiers.deployment(self.settings, role))
 
     def provisioned_roles(self) -> list[str]:
         return [role for role in self.registry() if self.available(role)]
@@ -159,15 +160,15 @@ class FoundryAgentService:
         """Create (or update) the agents in Foundry. Safe to run repeatedly: unchanged agents are skipped."""
         if not entra_configured(self.settings):
             raise AIUnavailable("Set AZURE_AI_PROJECT_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT first.")
-        from azure.ai.projects.models import PromptAgentDefinition
+        from azure.ai.projects.models import PromptAgentDefinition, Reasoning
 
         wanted = [agent for agent in get_all_agents() if not roles or agent.role in roles]
-        model = self.settings.azure_ai_model_deployment
         results: list[dict] = []
         try:
             with project_client(self.settings) as project:
                 existing = self.registry()
                 for agent in wanted:
+                    model = model_tiers.deployment(self.settings, agent.role)
                     name, sha = agent_name(agent.role), _sha(agent, model)
                     entry = existing.get(agent.role)
                     recreated = False
@@ -180,7 +181,10 @@ class FoundryAgentService:
                             recreated = True
                     created = project.agents.create_version(
                         agent_name=name,
-                        definition=PromptAgentDefinition(model=model, instructions=agent_instructions(agent), tools=agent_tools(agent) or None),
+                        definition=PromptAgentDefinition(
+                            model=model, instructions=agent_instructions(agent), tools=agent_tools(agent) or None,
+                            reasoning=Reasoning(effort=effort) if (effort := model_tiers.reasoning_effort(model)) else None,
+                        ),
                         description=f"{agent.name} ({agent.squad}). Part of Behave Kyndryl.",
                         metadata={"app": "behave-kyndryl", "role": agent.role, "sha": sha},
                     )
@@ -202,7 +206,7 @@ class FoundryAgentService:
         entry = self.registry().get(role) or {}
         with telemetry.span(f"invoke_agent {agent_name(role)}", **{
             "gen_ai.operation.name": "invoke_agent", "gen_ai.system": "azure.ai.foundry", "gen_ai.agent.name": agent_name(role),
-            "gen_ai.agent.version": str(entry.get("version") or ""), "gen_ai.request.model": self.settings.azure_ai_model_deployment,
+            "gen_ai.agent.version": str(entry.get("version") or ""), "gen_ai.request.model": model_tiers.deployment(self.settings, role),
             "behave.agent.role": role, "behave.incident.id": str((payload.get("ticket") or {}).get("id", "")),
         }) as span:
             text, tokens_in, tokens_out = self._run(role, payload, schema_hint, tools)
@@ -291,6 +295,7 @@ def foundry_agent_status(settings: Settings, store: Store) -> dict:
             "foundryName": entry.get("name") or agent_name(agent.role),
             "provisioned": bool(entry.get("version")), "version": entry.get("version"), "syncedAt": entry.get("syncedAt"),
             "runs": entry.get("runs", 0), "lastRunAt": entry.get("lastRunAt"),
+            "modelTier": model_tiers.label(settings, agent.role),
         })
     provisioned = sum(1 for item in agents if item["provisioned"])
     project = urlparse(settings.azure_ai_project_endpoint).path.rstrip("/").split("/")[-1] if configured else ""
@@ -306,6 +311,6 @@ def foundry_agent_status(settings: Settings, store: Store) -> dict:
         mode, status = "foundry", f"All {len(agents)} agents are provisioned in Azure AI Foundry and run the missions."
     return {
         "agents": agents, "total": len(agents), "provisioned": provisioned, "mode": mode, "status": status,
-        "configured": configured, "project": project, "modelDeployment": settings.azure_ai_model_deployment,
+        "configured": configured, "project": project, "modelTiers": model_tiers.summary(settings),
         "agentMode": settings.agent_mode, "authentication": "Microsoft Entra ID (az login)",
     }

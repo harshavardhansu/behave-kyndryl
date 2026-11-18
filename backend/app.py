@@ -28,7 +28,7 @@ from .domain import ActionInput, DataClassification, EvidenceInput, IncidentInpu
 from .payment_sandbox import PaymentSandboxControl, PaymentSandboxControlAdapter
 from .providers import Assessment, ProviderError, configured_provider, validate_references
 from .seed import fresh_workspace, real_workspace, seed_workspace
-from . import platform_status, real_views
+from . import model_tiers, platform_status, real_views
 from .dependency_inventory import inventory as dependency_inventory
 from .ai_client import AIBudget, AIUnavailable, ai_configured, key_mode
 from .foundry_agents import get_all_agents
@@ -151,7 +151,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             pause_interrupted(state)
             ensure_services(state, Projects.load(), now())  # connected projects (projects.json) appear in the service catalog
         database.mutate(recover)
-        if config.foundry_auto_sync and isinstance(application.state.mission_brain, FoundryBrain) and not database.read().get("foundryAgents"):
+        recorded = database.read().get("foundryAgents") or {}
+        # Sync when no agents exist yet, or when an agent was created on a different model than its tier now uses.
+        stale = not recorded or any((entry or {}).get("model") != model_tiers.deployment(config, role) for role, entry in recorded.items())
+        if config.foundry_auto_sync and isinstance(application.state.mission_brain, FoundryBrain) and stale:
             def sync_agents() -> None:
                 try:
                     results = application.state.mission_brain.agents.provision()
@@ -322,6 +325,10 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         database.mutate(lambda state: audit(state, auth["user"], "Signed out", auth["user"]["id"]))
         return {"message": "Signed out."}
 
+    def public_json(data: dict) -> Response:
+        """JSON for the site with model deployment names shown as their tier."""
+        return Response(model_tiers.public_text(config, json.dumps(data, default=str)), media_type="application/json")
+
     @application.get("/api/v1/workspace")
     def snapshot(request: Request, auth: Auth):
         require(auth["user"], "read")
@@ -361,6 +368,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         state["incidents"].sort(key=lambda incident: incident["detectedAt"], reverse=True)
         # The browser polls this snapshot. An ETag lets an unchanged snapshot come back as an empty 304
         # instead of the whole workspace again ("as of" time is left out of the tag so it does not defeat it).
+        # The site names the model tier, never the deployment (model_tiers.public_text).
         stamp = state.pop("snapshotAt", None)
         tag = '"' + hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()[:32] + '"'
         if stamp is not None:
@@ -368,7 +376,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         headers = {"ETag": tag, "Cache-Control": "private, no-cache"}
         if request.headers.get("if-none-match") == tag:
             return Response(status_code=304, headers=headers)
-        return Response(json.dumps(state, default=str), media_type="application/json", headers=headers)
+        return Response(model_tiers.public_text(config, json.dumps(state, default=str)), media_type="application/json", headers=headers)
 
     @application.get("/api/v1/gateway")
     def gateway_catalog(auth: Auth):
@@ -413,7 +421,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
     @application.get("/api/v1/foundry/agents")
     def list_foundry_agents(auth: Auth):
         require(auth["user"], "read")
-        return foundry_agent_status(config, database)
+        return public_json(foundry_agent_status(config, database))
 
     class FoundrySyncInput(StrictModel):
         roles: list[str] = Field(default_factory=list, max_length=14)
@@ -431,7 +439,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             raise HTTPException(503, str(error)) from None
         created = [item for item in results if item["action"] != "unchanged"]
         database.mutate(lambda state: audit(state, auth["user"], "Foundry agents synced", "foundry", next_state=f"{len(created)} created or updated, {len(results) - len(created)} unchanged"))
-        return {**foundry_agent_status(config, database), "results": results}
+        return public_json({**foundry_agent_status(config, database), "results": results})
 
     @application.post("/api/v1/incidents", status_code=201)
     def create_incident(payload: IncidentInput, auth: Auth):
@@ -1221,6 +1229,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         state = database.read()
         incident = find(state, "incidents", incident_id)
         mission = pick_mission(state, incident_id)
+        if mission:
+            mission = json.loads(model_tiers.public_text(config, json.dumps(mission, default=str)))
         pdf_bytes = generate_mission_report_pdf(incident, mission, state) if mission else generate_incident_resolution_pdf(incident, state)
         database.mutate(lambda s: audit(s, auth["user"], "Resolution report PDF exported", incident_id))
         return Response(

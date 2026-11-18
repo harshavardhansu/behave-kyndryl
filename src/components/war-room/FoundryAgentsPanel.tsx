@@ -17,6 +17,7 @@ interface FoundryAgentRow {
   runs: number
   lastRunAt: string | null
   humanApprovalRequired: boolean
+  modelTier: string
 }
 
 interface FoundryStatus {
@@ -27,7 +28,7 @@ interface FoundryStatus {
   status: string
   configured: boolean
   project: string
-  modelDeployment: string
+  modelTiers: string
   agentMode: string
   authentication: string
 }
@@ -73,7 +74,7 @@ export function FoundryAgentsPanel() {
           <p className="muted">
             Running as: <strong>{MODE_LABEL[data.mode]}</strong>
             {data.project && <> · project <span className="mono">{data.project}</span></>}
-            {data.modelDeployment && <> · model <span className="mono">{data.modelDeployment}</span></>}
+            {data.configured && <> · {data.modelTiers}</>}
             {' '}· sign-in: {data.authentication}
           </p>
         </div>
@@ -88,13 +89,14 @@ export function FoundryAgentsPanel() {
       </div>
       <table className="foundry-table">
         <thead>
-          <tr><th>Agent</th><th>Squad</th><th>Foundry name</th><th>State</th><th>Runs</th><th>Last synced</th></tr>
+          <tr><th>Agent</th><th>Squad</th><th>Model</th><th>Foundry name</th><th>State</th><th>Runs</th><th>Last synced</th></tr>
         </thead>
         <tbody>
           {data.agents.map((agent) => (
             <tr key={agent.role}>
               <td><strong>{agent.name}</strong>{agent.humanApprovalRequired && <small> · human approval</small>}</td>
               <td>{agent.squad.replace(' Squad', '')}</td>
+              <td>{agent.modelTier.startsWith('Advanced') ? <Badge tone="outline">{agent.modelTier}</Badge> : agent.modelTier}</td>
               <td className="mono">{agent.foundryName}</td>
               <td>{agent.provisioned ? <Badge tone="success">v{agent.version}</Badge> : <Badge tone="neutral">Not created</Badge>}</td>
               <td className="mono">{agent.runs}</td>

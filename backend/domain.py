@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(2_097_152, validation_alias="AGENTICA_MAX_UPLOAD_BYTES", ge=1024, le=10_485_760)
     allowed_origins: str = Field("http://127.0.0.1:5173,http://localhost:5173", validation_alias="AGENTICA_ALLOWED_ORIGINS")
     azure_ai_project_endpoint: str = ""
-    azure_ai_model_deployment: str = ""
+    azure_ai_model_deployment: str = ""  # fast model: the agents that gather and summarise
+    azure_ai_model_deployment_advanced: str = ""  # advanced reasoning model for the key agents (model_tiers.py)
     azure_tenant_id: str = ""
     azure_client_id: str = ""
     azure_client_secret: SecretStr = SecretStr("")

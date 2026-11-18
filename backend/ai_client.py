@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Iterator
 from urllib.parse import urlparse
 
+from . import model_tiers
 from .domain import Settings, now
 from .store import Store
 
@@ -110,7 +111,7 @@ class AIBudget:
             totals = usage.get("totals", {"calls": 0, "inputTokens": 0, "outputTokens": 0, "cacheHits": 0})
             usage = {"date": _today(), "calls": 0, "inputTokens": 0, "outputTokens": 0, "cacheHits": 0, "totals": totals, "recent": usage.get("recent", [])}
         usage["limit"] = self.settings.ai_daily_call_limit
-        usage["model"] = self.settings.azure_ai_model_deployment
+        usage["model"] = model_tiers.summary(self.settings)
         state["aiUsage"] = usage
         return usage
 
