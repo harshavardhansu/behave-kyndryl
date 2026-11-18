@@ -7486,16 +7486,22 @@ button.metric:hover {
 
 
 /* Loading screen: shimmering wordmark and an orbit loader (the Orchestrator with agents circling it) */
-.loading-shimmer .brand-product,
-.loading-shimmer .brand-kyndryl {
+/* One light band sweeps across the whole wordmark; each word keeps its own colour */
+.loading-shimmer .brand-mark { position: relative; display: inline-block; }
+.loading-shimmer .brand-mark::after {
+    content: "Behave Kyndryl";
+    content: "Behave Kyndryl" / "";
+    position: absolute;
+    inset: 0;
+    white-space: nowrap;
+    color: transparent;
+    background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.9) 50%, transparent 58%) no-repeat;
     background-size: 250% 100%;
     -webkit-background-clip: text;
     background-clip: text;
-    color: transparent;
     animation: brand-shimmer 2.4s ease-in-out infinite;
+    pointer-events: none;
 }
-.loading-shimmer .brand-product { background-image: linear-gradient(110deg, #6f7f86 40%, #d9e1e4 50%, #6f7f86 60%); }
-.loading-shimmer .brand-kyndryl { background-image: linear-gradient(110deg, #ff462d 40%, #ffc2b8 50%, #ff462d 60%); }
 @keyframes brand-shimmer {
     from { background-position: 100% 0; }
     to { background-position: -50% 0; }
@@ -7539,12 +7545,9 @@ button.metric:hover {
 @keyframes orbit-pulse { 50% { transform: scale(0.82); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .loading-shimmer .brand-product,
-    .loading-shimmer .brand-kyndryl,
     .orbit-core,
     .orbit-ring { animation: none; }
-    .loading-shimmer .brand-product { color: #6f7f86; background: none; }
-    .loading-shimmer .brand-kyndryl { color: #ff462d; background: none; }
+    .loading-shimmer .brand-mark::after { display: none; }
 }
 
 
@@ -7564,3 +7567,40 @@ button.metric:hover {
 .page-header-top .back-link:hover { color: #ffffff; }
 .page-header-top .detail-title-meta { margin-bottom: 0; }
 .page-header-top .detail-title-meta > .mono { color: rgba(255, 255, 255, 0.82); font-size: 12px; }
+
+
+/* Environment picker in the header */
+.header-environment {
+    border: 1px solid #dcdee1;
+    gap: 8px;
+    padding: 0 10px 0 11px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.header-environment:hover { border-color: #b9bcc1; }
+.header-environment[data-state='open'] { border-color: #29707a; box-shadow: 0 0 0 3px rgba(41, 112, 122, 0.12); }
+.header-environment > svg { color: #6b6e74; transition: transform 0.15s; }
+.header-environment[data-state='open'] > svg { transform: rotate(180deg); }
+[data-env='Production'] > .environment-dot { background: #e5352a; }
+[data-env='Staging'] > .environment-dot { background: #d98a00; }
+[data-env='Development'] > .environment-dot { background: #2f6fd6; }
+[data-env='Sandbox'] > .environment-dot { background: #2e9b5f; }
+.environment-menu { min-width: 236px; }
+.environment-menu [role='menuitemradio'] {
+    outline: none;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+.environment-menu [role='menuitemradio'][data-highlighted] { background: #f3f5f6; }
+.environment-menu [role='menuitemradio'][data-state='checked'] { background: #eaf3f4; }
+.environment-menu .environment-dot { width: 8px; height: 8px; }
+.environment-option { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.environment-option strong { font-size: 13px; font-weight: 600; color: var(--text); }
+.environment-option small { font-size: 11px; color: #6b6e74; }
+.environment-check { display: flex; color: #29707a; }

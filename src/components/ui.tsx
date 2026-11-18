@@ -492,16 +492,12 @@ export function OrbitLoader() {
 
 export function LoadingState() {
   return (
-    <main
-      className="loading-workspace"
-      aria-label="Loading workspace"
-      role="status"
-    >
+    <main className="loading-workspace" aria-label="Loading workspace">
       <OrbitLoader />
       <div className="loading-brand loading-shimmer">
         <BrandMark />
       </div>
-      <p>Loading workspace records</p>
+      <p role="status">Loading workspace records</p>
     </main>
   )
 }

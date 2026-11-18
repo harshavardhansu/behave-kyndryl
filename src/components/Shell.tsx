@@ -42,6 +42,13 @@ import type { LucideIcon } from 'lucide-react'
 import { useWorkspace } from '../context'
 import { dateTime, environments, errorMessage, roles } from '../lib/format'
 import type { Environment } from '../types'
+
+const environmentNotes: Record<Environment, string> = {
+  Production: 'Live customer traffic',
+  Staging: 'Pre-release checks',
+  Development: 'Engineering builds',
+  Sandbox: 'Safe place to try fixes',
+}
 import {
   Avatar,
   Badge,
@@ -326,21 +333,47 @@ export function Shell() {
               </Dropdown.Content>
             </Dropdown.Portal>
           </Dropdown.Root>
-          <label className="header-environment">
-            <span className="environment-dot" />
-            <span className="sr-only">Global environment</span>
-            <select
-              aria-label="Global environment"
-              value={environment}
-              onChange={(event) =>
-                setPendingEnvironment(event.target.value as Environment)
-              }
-            >
-              {environments.map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
+          <Dropdown.Root>
+            <Dropdown.Trigger asChild>
+              <button
+                className="header-environment"
+                aria-label={`Global environment: ${environment}`}
+                data-env={environment}
+              >
+                <span className="environment-dot" />
+                <span className="environment-name">{environment}</span>
+                <ChevronDown size={14} />
+              </button>
+            </Dropdown.Trigger>
+            <Dropdown.Portal>
+              <Dropdown.Content
+                className="dropdown environment-menu"
+                sideOffset={8}
+                align="end"
+              >
+                <Dropdown.Label>Environment view</Dropdown.Label>
+                <Dropdown.RadioGroup
+                  value={environment}
+                  onValueChange={(value) => {
+                    if (value !== environment) setPendingEnvironment(value as Environment)
+                  }}
+                >
+                  {environments.map((value) => (
+                    <Dropdown.RadioItem key={value} value={value} data-env={value}>
+                      <span className="environment-dot" />
+                      <span className="environment-option">
+                        <strong>{value}</strong>
+                        <small>{environmentNotes[value]}</small>
+                      </span>
+                      <Dropdown.ItemIndicator className="environment-check">
+                        <Check size={14} />
+                      </Dropdown.ItemIndicator>
+                    </Dropdown.RadioItem>
+                  ))}
+                </Dropdown.RadioGroup>
+              </Dropdown.Content>
+            </Dropdown.Portal>
+          </Dropdown.Root>
           <div className="header-divider" />
           <Dropdown.Root>
             <Dropdown.Trigger asChild>
