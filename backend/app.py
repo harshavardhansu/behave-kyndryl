@@ -1245,6 +1245,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
             candidate = (static_root / full_path).resolve()
             if full_path and candidate.is_file() and candidate.is_relative_to(static_root):
                 return FileResponse(candidate)
+            if Path(full_path).suffix:   # a missing file (robots.txt, ard.json, ...) is a 404, not the app's HTML
+                return JSONResponse(status_code=404, content={"detail": "Not found."})
             return FileResponse(static_root / "index.html")
 
     return application

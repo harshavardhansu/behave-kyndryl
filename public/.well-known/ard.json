@@ -1,0 +1,18 @@
+{
+  "specVersion": "0.91",
+  "entries": [
+    {
+      "identifier": "urn:air:behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io:api:incident-resolution",
+      "displayName": "BEHAVE Kyndryl incident-resolution API",
+      "type": "application/openapi+json",
+      "url": "https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/api/openapi.json",
+      "representativeQueries": [
+        "Create an incident with logs and start an agent mission",
+        "Get the root cause and evidence for an incident",
+        "Download the incident resolution report as PDF",
+        "Check the readiness of an incident for an agent mission"
+      ],
+      "capabilities": ["IncidentIntake", "AgentMission", "RootCauseAnalysis", "IncidentReport"]
+    }
+  ]
+}

@@ -52,3 +52,17 @@ def test_judge_mode_never_opens_pull_requests(monkeypatch):
     assert Projects([])._code(settings).pull_requests is True
     monkeypatch.setenv("AGENTICA_PUBLIC_DEMO", "true")
     assert Projects([])._code(settings).pull_requests is False
+
+
+def test_static_files_for_agents_are_served_and_missing_files_are_404(tmp_path):
+    (tmp_path / "index.html").write_text("<!doctype html><title>app</title>")
+    (tmp_path / ".well-known").mkdir()
+    (tmp_path / ".well-known" / "ard.json").write_text('{"entries": []}')
+    (tmp_path / "llms.txt").write_text("# BEHAVE Kyndryl\n")
+    settings = Settings(AGENTICA_MODE="demo", AGENTICA_STATIC_DIR=str(tmp_path), database_url="sqlite:///:memory:")
+    with TestClient(create_app(settings, Store("sqlite:///:memory:"))) as client:
+        ard = client.get("/.well-known/ard.json")
+        assert ard.status_code == 200 and ard.json() == {"entries": []}
+        assert client.get("/llms.txt").text.startswith("# BEHAVE Kyndryl")
+        assert client.get("/sitemap.xml").status_code == 404          # a missing file is not the app's HTML
+        assert "<title>app</title>" in client.get("/war-room").text     # app routes still get the single-page app

@@ -1,0 +1,22 @@
+# BEHAVE Kyndryl
+
+> An agentic incident-resolution workspace on Microsoft Azure. For each incident an Orchestrator forms a team of specialist AI agents (Azure AI Foundry Agent Service) that investigate real logs and code with read-only tools, name the root cause with evidence, and write an exact fix. People approve every step that changes anything; a Tool Gateway carries out approved changes once.
+
+This site is a working proof of concept built by Team HacKyn for the Agentic AI Kyndryl U.S. Hackathon. Visitors pick a demo role; no sign-in is needed.
+
+## API
+
+- [OpenAPI description](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/api/openapi.json): every REST endpoint under /api/v1, machine-readable
+- [Interactive API docs](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/api/docs): try the endpoints in the browser
+- [Service health](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/api/v1/health): status, database and execution mode
+
+## Product
+
+- [AI War Room](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/war-room): live view of a mission, its agents and the human approvals
+- [Issues and incidents](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/incidents): incident records and their evidence
+- [Reports and analytics](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/reports): incident reports, preview and PDF
+- [Knowledge centre](https://behave-kyndryl.happyglacier-e926a380.westus3.azurecontainerapps.io/knowledge): approved resolutions used as organisational memory
+
+## Source
+
+- [GitHub repository](https://github.com/harshavardhansu/behave-kyndryl): code, tests and deployment
