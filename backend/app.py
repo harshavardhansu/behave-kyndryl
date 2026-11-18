@@ -234,7 +234,8 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Hashed build files never change under the same name: let browsers keep them. Everything else stays uncached.
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if request.url.path.startswith("/assets/") else "no-store"
+        # A response that sets its own caching rule (the workspace snapshot's ETag) keeps it.
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable" if request.url.path.startswith("/assets/") else "no-store")
         response.headers["Referrer-Policy"] = "same-origin"
         return response
 
@@ -322,7 +323,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         return {"message": "Signed out."}
 
     @application.get("/api/v1/workspace")
-    def snapshot(auth: Auth):
+    def snapshot(request: Request, auth: Auth):
         require(auth["user"], "read")
         state = database.read()
         state.pop("idempotency", None)
@@ -358,7 +359,16 @@ def create_app(settings: Settings | None = None, store: Store | None = None, san
         state["gateway"] = sorted(state.get("gateway", []), key=lambda entry: entry["startedAt"], reverse=True)[:50]
         state["audit"].sort(key=lambda event: event["timestamp"], reverse=True)
         state["incidents"].sort(key=lambda incident: incident["detectedAt"], reverse=True)
-        return state
+        # The browser polls this snapshot. An ETag lets an unchanged snapshot come back as an empty 304
+        # instead of the whole workspace again ("as of" time is left out of the tag so it does not defeat it).
+        stamp = state.pop("snapshotAt", None)
+        tag = '"' + hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()[:32] + '"'
+        if stamp is not None:
+            state["snapshotAt"] = stamp
+        headers = {"ETag": tag, "Cache-Control": "private, no-cache"}
+        if request.headers.get("if-none-match") == tag:
+            return Response(status_code=304, headers=headers)
+        return Response(json.dumps(state, default=str), media_type="application/json", headers=headers)
 
     @application.get("/api/v1/gateway")
     def gateway_catalog(auth: Auth):

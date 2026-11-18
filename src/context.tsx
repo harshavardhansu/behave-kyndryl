@@ -130,8 +130,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         data?.missions?.some((mission) => ['Analysing', 'Working'].includes(mission.status))
       )
         return 1000
-      // A mission waiting for a human may be decided by someone else (another browser): stay fresh.
-      if (data?.missions?.some((mission) => mission.status.startsWith('Awaiting') || mission.status === 'Paused')) return 4000
+      // A mission waiting for a human may be decided by someone else (another browser): stay fresh,
+      // but slowly enough that the page can go quiet between checks (an unchanged snapshot is an empty 304).
+      if (data?.missions?.some((mission) => mission.status.startsWith('Awaiting') || mission.status === 'Paused')) return 10_000
       return 30_000
     },
   })

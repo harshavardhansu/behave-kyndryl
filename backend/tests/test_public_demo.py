@@ -66,3 +66,15 @@ def test_static_files_for_agents_are_served_and_missing_files_are_404(tmp_path):
         assert client.get("/llms.txt").text.startswith("# BEHAVE Kyndryl")
         assert client.get("/sitemap.xml").status_code == 404          # a missing file is not the app's HTML
         assert "<title>app</title>" in client.get("/war-room").text     # app routes still get the single-page app
+
+
+def test_unchanged_workspace_snapshot_comes_back_as_an_empty_304():
+    with make_client(AGENTICA_PUBLIC_DEMO=True) as client:
+        admin(client)
+        first = client.get("/api/v1/workspace")
+        assert first.status_code == 200 and first.json()["incidents"] is not None
+        tag = first.headers["etag"]
+        assert first.headers["cache-control"] == "private, no-cache"
+        again = client.get("/api/v1/workspace", headers={"If-None-Match": tag})
+        assert again.status_code == 304 and again.content == b""
+        assert client.get("/api/v1/workspace", headers={"If-None-Match": '"stale"'}).status_code == 200
