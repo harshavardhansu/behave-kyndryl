@@ -1,4 +1,4 @@
-# BEHAVE KYNDRYL Architecture
+# Behave Kyndryl architecture
 
 Audit date: 2026-11-03. This document distinguishes the verified local application from the staged target. The current repository is the source of truth; no presentation deck was present in the inspected repository.
 
